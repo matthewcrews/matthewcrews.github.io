@@ -3,26 +3,26 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
-    <loc>https://matthewcrews.github.io/blog/</loc>
+    <loc>/blog/</loc>
     <lastmod>2020-11-28T14:31:00-08:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.github.io/blog/my-first-post/</loc>
+    <loc>/blog/my-first-post/</loc>
     <lastmod>2020-11-28T14:31:00-08:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.github.io/</loc>
+    <loc>/</loc>
     <lastmod>2020-11-28T14:31:00-08:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.github.io/categories/</loc>
+    <loc>/categories/</loc>
   </url>
   
   <url>
-    <loc>https://matthewcrews.github.io/tags/</loc>
+    <loc>/tags/</loc>
   </url>
   
 </urlset>
