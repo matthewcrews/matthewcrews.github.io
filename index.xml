@@ -13,7 +13,10 @@
       <pubDate>Sat, 28 Nov 2020 14:31:00 -0800</pubDate>
       
       <guid>https://matthewcrews.com/blog/my-first-post/</guid>
-      <description>Hello world!</description>
+      <description>Subtitle Header 2 Inline math: \(x_{1} + y_{1} = z_{i}\) Some words after
+Some set apart math
+$$x_{1} + y_{1} = z_{i}$$
+Hello world!</description>
     </item>
     
   </channel>
