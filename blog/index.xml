@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Blogs on My New Hugo Site</title>
+    <link>https://matthewcrews.com/blog/</link>
+    <description>Recent content in Blogs on My New Hugo Site</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Sat, 28 Nov 2020 14:31:00 -0800</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>My First Post</title>
+      <link>https://matthewcrews.com/blog/my-first-post/</link>
+      <pubDate>Sat, 28 Nov 2020 14:31:00 -0800</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/my-first-post/</guid>
+      <description>Hello world!</description>
+    </item>
+    
+  </channel>
+</rss>
