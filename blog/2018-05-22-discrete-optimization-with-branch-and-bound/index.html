@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name=" robots" content="noindex, nofollow">
+<title>Discrete Optimization with Branch and Bound | Matthew Crews</title>
+
+<meta name="keywords" content="" />
+<meta name="description" content="If you have spent any time with me you will know that I am passionate about Optimization. Now, you may pass this off as a bit of geekiness on my part but the reason I care about Optimization is that it has profound implications for how we care for people. When I get a moment to describe Optimization to someone the way I start off is by saying, &ldquo;Optimization is the mathematics of caring for people.">
+<meta name="author" content="">
+<link rel="canonical" href="https://matthewcrews.com/blog/2018-05-22-discrete-optimization-with-branch-and-bound/" />
+<link href="https://matthewcrews.com/assets/css/stylesheet.min.8cbe03cd36d575ee2d4398db2c2b89694db1f7cf71d909908b0cf8aeca1ad007.css" integrity="" rel="preload stylesheet"
+    as="style">
+
+<link rel="icon" href="https://matthewcrews.com/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://matthewcrews.com/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://matthewcrews.com/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://matthewcrews.com/apple-touch-icon.png">
+<link rel="mask-icon" href="https://matthewcrews.com/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<meta name="generator" content="Hugo 0.78.2" />
+
+
+
+
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+<noscript>
+    <style type="text/css">
+        .theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+</noscript>
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="https://matthewcrews.com" accesskey="h">Matthew Crews</a>
+            <span class="logo-switches">
+                <span class="theme-toggle">
+                    <a id="theme-toggle" accesskey="t">
+                        <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                        <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                    </a>
+                </span>
+                
+            </span>
+        </div>
+        <ul class="menu" id="menu" onscroll="menu_on_scroll()">
+            <li>
+                <a href="https://matthewcrews.com/about">
+                    <span>
+                        About
+                    </span>
+                </a>
+            </li></ul>
+    </nav>
+</header>
+
+    <main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <h1 class="post-title">
+      Discrete Optimization with Branch and Bound
+    </h1>
+    <div class="post-meta">May 22, 2018
+
+    </div>
+  </header> 
+
+  <div class="post-content">
+<p>If you have spent any time with me you will know that I am passionate about Optimization. Now, you may pass this off as a bit of geekiness on my part but the reason I care about Optimization is that it has profound implications for how we care for people. When I get a moment to describe Optimization to someone the way I start off is by saying, &ldquo;Optimization is the mathematics of caring for people.&rdquo; If you care about making the world a better place for humanity, then you should care about Optimization.</p>
+<p>The difficulty is that Optimization is often shrouded in mystery due to the math. My hope in this series is to clarify the mathematics of Optimization and make it more approachable. This will be the resource I wish I had when going through school. My desire is that by the end of the series you will have a firmer footing as you begin to scale the beautiful heights of Optimization and you come to enjoy it as art and as a tool for serving others.</p>
+<blockquote>
+<p>Note: I am not putting these posts out in a particular order. Right now I am just writing on what I am researching currently. When the series is complete I will recompile them into a more sensible order. The field is vast so I may jump around as I focus on different areas in my professional life.</p>
+</blockquote>
+<h2 id="integer-and-mixed-integer-programming">Integer and Mixed Integer Programming<a hidden class="anchor" aria-hidden="true" href="#integer-and-mixed-integer-programming">#</a></h2>
+<p>Integer Programming (IP) and Mixed Integer Programming (MIP) both fall under the umbrella of Discrete Optimization since some or all of their decision variables must take on discrete values. They are amazing tools for mathematically modeling problems. By adding decision variables which must take on integer values we can describe complex logic in ways that Linear Programming (LP) cannot. The downside to this is that the problems are far more difficult to solve. Thankfully, there are a host of algorithms which can solve even incredibly large problems in a reasonable amount of time. The performance of these algorithms is highly dependent on the quality of the implementation though.</p>
+<p>One of the immediate challenges we face when trying to solve IP and MIP problems is that we cannot directly deal with the fact that some of the decision variables need to take on integral values. What most algorithms do is solve a Linear Programming relaxation of the original problem. The integral requirements of the decision variables is relaxed. This relaxed LP is solved and then constraints are added which force the integer decision variables to converge toward integral solutions. This means that we can really think of solving IP and MIP problems as recursively solving LPs where we add constraints at each recursive step. These first few posts will describe some of the algorithms in this family of solution techniques.</p>
+<h2 id="branch-and-bound">Branch and Bound<a hidden class="anchor" aria-hidden="true" href="#branch-and-bound">#</a></h2>
+<p>Branch and Bound is the most straightforward method of searching for IP/MIP solutions. We solve an initial LP Relaxation of the original problem. If we find a solution where some of the integer decision variables have taken on nonintegral values we select one to branch one, much like binary search. We end up creating two new subproblems, referred to as nodes in the search tree, which are copies of the original problem but each one has a new constraint which forces the variable we are branching on to take on an integral value.</p>
+<p>For example, if we solved the LP Relaxation and the decision variable $x_1 = 1.5$ but it is supposed to be integral we can branch on $x_1$. We do this by creating two new instances of the original problem but in one of the subproblems, or node in the search tree, we add the constraint $x_1 \leq1$ and in the other subproblem , or node, we add the constraint that $x_1 \geq 2$. These new problems will no longer allow $x_1$ to take on the value of $1.5$. We now solve these new problems (nodes) and add new constraints to force other nonintegral integer variables toward integral values.</p>
+<p>As we successively solve these subproblems (nodes) we may come across a solution where the integrality requirements are met. This is called the <em>incumbent solution</em>. This solution represents the best feasible solution to our original problem we have found thus far. As we continue to search we may find a better solution which also meets the integrality requirements. This improved solution becomes the new <em>incumbent solution</em>. Eventually we will prune all of the branches and the remaining <em>incumbent solution</em> is the optimal solution for the original problem. Let&rsquo;s walk through a more formal description of the algorithm.</p>
+<h2 id="algorithm-description">Algorithm Description<a hidden class="anchor" aria-hidden="true" href="#algorithm-description">#</a></h2>
+<p>Let&rsquo;s put together a rough outline of how the Brand and Bound algorithm works. For that we will need some parameters.</p>
+<p>$P =$ Our Initial Problem<br>
+$P_{LP} =$ The LP Relaxation of our initial problem<br>
+$z^\ast =$ The objective function value for $P_{LP}$<br>
+$P^n =$ The $n^{th}$ subproblem of problem $P$<br>
+$P^n_{LP} =$ The LP relaxation of the $P^n$ problem<br>
+$z^n =$ The objective function value for the solution to $P^n$<br>
+$z_{UB}^n =$ The best upper bound on the objective function for node $n$<br>
+$z_{LB}^n =$ The best lower bound on the objective function for node $n$<br>
+$Z_{UB} =$ The best upper bound for the objective function observed so far<br>
+$Z_{LB} =$ The best lower bound for the objective function so far</p>
+<h3 id="step-0-initialize-the-problem">Step 0: Initialize the Problem<a hidden class="anchor" aria-hidden="true" href="#step-0-initialize-the-problem">#</a></h3>
+<p>Create a LP Relaxation of the original problem, $P$, and solve it. We refer to this relaxed problem as $P_{LP}$ and it will be the initial node in our tree of nodes that we search. We attempt to solve $P_{LP}$ and check for one of the following conditions.</p>
+<h4 id="infeasible">Infeasible<a hidden class="anchor" aria-hidden="true" href="#infeasible">#</a></h4>
+<p>If the problem is infeasible at this stage we are done. If there is no solution to the $P_{LP}$ there is no solution to the original problem $P$.</p>
+<h4 id="unbounded">Unbounded<a hidden class="anchor" aria-hidden="true" href="#unbounded">#</a></h4>
+<p>If $P_{LP}$ has no bounds then we are done. The problem is unconstrained and therefore no optimal solution exists.</p>
+<h4 id="integer-solution">Integer Solution<a hidden class="anchor" aria-hidden="true" href="#integer-solution">#</a></h4>
+<p>All of the integeral requirements of $P$ have been met. We are done since the solution to $P_{LP}$ and $P$ is the same.</p>
+<h4 id="fractional-solution">Fractional Solution<a hidden class="anchor" aria-hidden="true" href="#fractional-solution">#</a></h4>
+<p>Some number of the integer variables have taken on nonintegral. We set $Z_{UB} = z^\ast$ where $z^\ast$ is the objective value for the initial problem $P_{LP}$ and  $Z_{LB} = -\infty$. $Z_{LB} = -\infty$ is used to track what the best lower bound is for the original problem. We will use this value to prune nodes as we continue to search.</p>
+<p>Select one of the nonintegral decision variables and branch. To branch we create two new nodes from the parent problem $P$. We make a copy of $P$ but we add a constraint to the child nodes which will force the nonintegral variable toward and integral value.</p>
+<p>Let&rsquo;s say that in $P$ $x_1$ is an integer decision variable. When we solve $P_{LP}$ we find that in the solution $x_1 = 1.5$. $x_1$ is supposed to take on an integral value so we decide to branch on this variable. We create a new child node $P^1$ which is the same as $P$ but with a new constraint $x_1 \leq 1$. The other child node we create is $P^2$ and is the same as $P$ but with the opposing constraint that $x_{1} \geq 2$. We add both of these child nodes to the Candidate List. We do not have an *incumbent solution* initially.</p>
+<h3 id="step-1-select-a-node-from-the-candidate-list">Step 1: Select a Node from the Candidate List<a hidden class="anchor" aria-hidden="true" href="#step-1-select-a-node-from-the-candidate-list">#</a></h3>
+<p>Now assuming that a feasible solution to $P$ was not found when we solved $P_{LP}$ then we need to choose a node to solve from the Candidate List. After Step 0 there will only be 2 nodes to the Candidate List but as we continue to iterate we will add more nodes in the Candidate List.</p>
+<p>Which node we choose to solve is an algorithm design decision. We could choose the node with the best lower bound or continue down the children of the  node we just solved. What some people do is do a depth first search to find a better $Z_{LB}$ to aid in pruning other nodes. The best choice is often problem dependent. Whatever strategy you employ, you will continue to evaluate nodes until the Candidate List has been emptied.</p>
+<p>If at any point we arrive at Step 1 and find there are no nodes in the Candidate List yet have an <em>incumbent solution</em> we terminate the algorithm and declare the <em>incumbent solution</em> to be the optimal.</p>
+<h3 id="step-2-solve-the-lp-relaxation-of-the-nth-node">Step 2: Solve the LP Relaxation of the $n^{th}$ node<a hidden class="anchor" aria-hidden="true" href="#step-2-solve-the-lp-relaxation-of-the-nth-node">#</a></h3>
+<p>Based on whatever node selection rule we used in Step 1 we have chosen to solve the $P^n$ node. When you solve the LP Relaxation of the given node, $P_{LP}^n$, you will find $z^n$ which is the objective function value for $P_{LP}^n$. We then update $z_{UB}^n = z^n$. This represents the best possible objective function that could be achieved by the children of this node.</p>
+<h3 id="step-3-check-for-infeasibility">Step 3: Check for Infeasibility<a hidden class="anchor" aria-hidden="true" href="#step-3-check-for-infeasibility">#</a></h3>
+<p>If while solving $P_{LP}^n$ you find the solution is infeasible you can &ldquo;prune&rdquo; this branch. None of the children of this node will be feasible either so there is no point in continuing to search down this branch.</p>
+<h3 id="step-4-check-against-z_lb">Step 4: Check against $Z_{LB}$<a hidden class="anchor" aria-hidden="true" href="#step-4-check-against-z_lb">#</a></h3>
+<p>If $z^n \leq Z_{LB}$ we can prune this branch. If we are on the first iteration of the problem though $Z_{LB} = -\infty$ so no node will be eliminated by this check. In Step 5 we update this value so eventually it will be an effective means of guiding our search down the tree.</p>
+<p>Now, why can we prune based on $z^n \leq Z_{LB}$ you may ask. This is because we know that there is another branch which guarantees better solutions than the current branch. There is no point in us spending time searching down this branch because we already know we can do just as well if not better searching a somewhere else. If we have not pruned based on this test proceed to Step 5 or Step 6 depending on the condition of the solution.</p>
+<h3 id="step-5-check-for-integrality">Step 5: Check for Integrality<a hidden class="anchor" aria-hidden="true" href="#step-5-check-for-integrality">#</a></h3>
+<p>If the solution to $P_{LP}^n$ meets the integrality requirements of $P$ we have found a feasible solution. We store this new *incumbent solution* and update the value of $Z_{LB} = z^n$ if $Z_{LB} &lt; z^n$. Again, $z^n$ is the value of the objective function for $P_{LP}^n$ which is the node we just solved. We prune this branch since it will not be possible to find a better solution. We then return to Step 1.</p>
+<h3 id="step-6-branch-the-solution">Step 6: Branch the Solution<a hidden class="anchor" aria-hidden="true" href="#step-6-branch-the-solution">#</a></h3>
+<p>If we have reached this step there are still nonintegral values for the integer decision variables so we must branch the current node $P^n$. From here we select a nonintegral decision variable to branch on and create two child nodes and add them to the Candidate List.</p>
+<p>For example, let&rsquo;s say that $x_2$ is an integer decision variable in problem $P$ but in the current solution, $P_{LP}^n$, we find $x_2=4.5$. We decide to branch on this decision variable since we need it to take on an integral value. We will create two new problems which are the same as our current problem $P^n$ but each has a new constraint forcing $x_2$ toward an integral value. One of the child nodes will have the constraint $x_2 \leq 4$ and the other node will have the constraint $x_2 \geq 5$. Both of these new nodes are added to the Candidate List. Loop back to Step 1 and continue.</p>
+<h2 id="wrapping-up">Wrapping Up<a hidden class="anchor" aria-hidden="true" href="#wrapping-up">#</a></h2>
+<p>In this post I have given a quick overview of the Branch and Bound algorithm for solving IP and MIP problems. While there may be a lot of terminology the whole thing boils down to what is essentially a binary search with some rules for eliminating branches. Branch and Bound is a foundational technique for solving this class of problems. More advanced methods typically take the framework of Branch and Bound and add additional steps for speeding up convergence and strengthening bounds. In my next post I hope to provide some worked examples to illustrate how this technique works.</p>
+
+</div>
+  <footer class="post-footer">
+  </footer>
+</article>
+    </main><footer class="footer">
+    <span>&copy; 2020 <a href="https://matthewcrews.com">Matthew Crews</a></span>
+    <span>&middot;</span>
+    <span>Powered by <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a></span>
+    <span>&middot;</span>
+    <span>Theme <a href="https://git.io/hugopapermod" rel="noopener" target="_blank">PaperMod</a></span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top" accesskey="g">
+    <button class="top-link" id="top-link" type="button">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6">
+            <path d="M12 6H0l6-6z" /></svg>
+    </button>
+</a>
+
+
+
+<script defer src="https://matthewcrews.com/assets/js/highlight.min.27cd435cc9ed6abb4b496581b151804f79f366c412620272bb94e2f5f598ebcc.js" integrity="sha256-J81DXMntartLSWWBsVGAT3nzZsQSYgJyu5Ti9fWY68w="
+    onload="hljs.initHighlightingOnLoad();"></script>
+<script>
+    window.onload = function () {
+        if (localStorage.getItem("menu-scroll-position")) {
+            document.getElementById('menu').scrollLeft = localStorage.getItem("menu-scroll-position");
+        }
+    }
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                behavior: "smooth"
+            });
+        });
+    });
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+    function menu_on_scroll() {
+        localStorage.setItem("menu-scroll-position", document.getElementById('menu').scrollLeft);
+    }
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+<script>
+    MathJax = {
+    tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+    }
+    };
+</script>
+<script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
+</script>
+
+</body>
+
+</html>

@@ -4,17 +4,66 @@
   
   <url>
     <loc>https://matthewcrews.com/blog/</loc>
-    <lastmod>2020-11-28T14:31:00-08:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>https://matthewcrews.com/blog/my-first-post/</loc>
-    <lastmod>2020-11-28T14:31:00-08:00</lastmod>
+    <lastmod>2020-10-07T00:00:00+00:00</lastmod>
   </url>
   
   <url>
     <loc>https://matthewcrews.com/</loc>
-    <lastmod>2020-11-28T14:31:00-08:00</lastmod>
+    <lastmod>2020-10-07T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2020-10-08-what-i-look-for-in-a-machine-learning-engineer/</loc>
+    <lastmod>2020-10-07T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2019-10-27-the-anatomy-of-an-optimization-model/</loc>
+    <lastmod>2019-11-11T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2018-05-24-discrete-optimization-with-cutting-planes/</loc>
+    <lastmod>2018-05-25T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2018-05-22-discrete-optimization-with-branch-and-bound/</loc>
+    <lastmod>2018-05-22T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2018-05-13-creating-summable-domain-types/</loc>
+    <lastmod>2018-05-13T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2018-05-04-fsharp-for-optimization-modeling/</loc>
+    <lastmod>2018-05-04T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2018-01-27-domains-run-amok/</loc>
+    <lastmod>2018-01-27T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2018-01-14-the-divide-operator-is-a-lie/</loc>
+    <lastmod>2018-01-14T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2018-01-06-my-most-expensive-error/</loc>
+    <lastmod>2018-01-06T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2018-01-05-using-fsharp-to-parse-html/</loc>
+    <lastmod>2018-01-05T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/about/</loc>
   </url>
   
   <url>

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name=" robots" content="noindex, nofollow">
+<title>Creating Summable Domain Types | Matthew Crews</title>
+
+<meta name="keywords" content="" />
+<meta name="description" content="One of the reasons that I love F# is that is makes it incredibly easy to model domains. By creating a Domain Model which represents the business domain it becomes relatively easy to create workflows and algorithms which streamline business processes. In this post I show how to create types for a domain which are summable, a feature I use frequently in my work.
+The Value of Restricting Values When I have to create a new Domain Model one of the first things that I do is define a single case Discriminated Union of decimal for the basic building blocks that I am going to work with (Costs, Items, Sales Rates, Days of Inventory, etc.">
+<meta name="author" content="">
+<link rel="canonical" href="https://matthewcrews.com/blog/2018-05-13-creating-summable-domain-types/" />
+<link href="https://matthewcrews.com/assets/css/stylesheet.min.8cbe03cd36d575ee2d4398db2c2b89694db1f7cf71d909908b0cf8aeca1ad007.css" integrity="" rel="preload stylesheet"
+    as="style">
+
+<link rel="icon" href="https://matthewcrews.com/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://matthewcrews.com/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://matthewcrews.com/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://matthewcrews.com/apple-touch-icon.png">
+<link rel="mask-icon" href="https://matthewcrews.com/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<meta name="generator" content="Hugo 0.78.2" />
+
+
+
+
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+<noscript>
+    <style type="text/css">
+        .theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+</noscript>
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="https://matthewcrews.com" accesskey="h">Matthew Crews</a>
+            <span class="logo-switches">
+                <span class="theme-toggle">
+                    <a id="theme-toggle" accesskey="t">
+                        <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                        <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                    </a>
+                </span>
+                
+            </span>
+        </div>
+        <ul class="menu" id="menu" onscroll="menu_on_scroll()">
+            <li>
+                <a href="https://matthewcrews.com/about">
+                    <span>
+                        About
+                    </span>
+                </a>
+            </li></ul>
+    </nav>
+</header>
+
+    <main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <h1 class="post-title">
+      Creating Summable Domain Types
+    </h1>
+    <div class="post-meta">May 13, 2018
+
+    </div>
+  </header> 
+
+  <div class="post-content">
+<p>One of the reasons that I love F# is that is makes it incredibly easy to model domains. By creating a Domain Model which represents the business domain it becomes relatively easy to create workflows and algorithms which streamline business processes. In this post I show how to create types for a domain which are summable, a feature I use frequently in my work.</p>
+<h2 id="the-value-of-restricting-values">The Value of Restricting Values<a hidden class="anchor" aria-hidden="true" href="#the-value-of-restricting-values">#</a></h2>
+<p>When I have to create a new Domain Model one of the first things that I do is define a single case Discriminated Union of <code>decimal</code> for the basic building blocks that I am going to work with (Costs, Items, Sales Rates, Days of Inventory, etc.). For example, when I am creating an algorithm to evaluate the financial viability of a product on marketplaces I have to calculate costs, I therefore create a <code>Cost</code> type. In my domain, a <code>Cost</code> is never negative therefore I can create a constructor which will enforce this behavior.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Cost</span> <span style="color:#f92672">=</span> Cost <span style="color:#66d9ef">of</span> <span style="color:#66d9ef">decimal</span> <span style="color:#75715e">// Define a single case DU &#39;Cost&#39; for decimal
+</span><span style="color:#75715e"></span>
+<span style="color:#66d9ef">module</span> Cost <span style="color:#f92672">=</span>
+    <span style="color:#66d9ef">let</span> create c <span style="color:#f92672">=</span>         <span style="color:#75715e">// Function for creating &#39;Cost&#39; values
+</span><span style="color:#75715e"></span>        <span style="color:#66d9ef">if</span> c <span style="color:#f92672">&lt;=</span> 0M <span style="color:#66d9ef">then</span>    <span style="color:#75715e">// Check that the value is greater than 0.0M
+</span><span style="color:#75715e"></span>            None           <span style="color:#75715e">// Return None if outside bounds
+</span><span style="color:#75715e"></span>        <span style="color:#66d9ef">else</span>
+            Some<span style="color:#f92672">(</span>Cost c<span style="color:#f92672">)</span>   <span style="color:#75715e">// Return input wrapped in a &#39;Cost&#39; value
+</span></code></pre></div><p>The beautiful thing about this is that when I am working with a <code>Cost</code> type I never have to worry about it being negative. This is a powerful thing when it comes to composing algorithms because I have eliminated a whole host of possible values that I would need to handle. It is amazing how easy it is for a negative numbers to sneak in and cause havoc. I force myself to deal with this bad data at the boundary of the domain instead of inside the algorithm performing the analysis.</p>
+<h2 id="the-downside-where-did-addition-go">The Downside: Where Did Addition Go?<a hidden class="anchor" aria-hidden="true" href="#the-downside-where-did-addition-go">#</a></h2>
+<p>There is a downside to doing this though, basic math operations will not work. At this point if I try to add two different <code>Cost</code> values I will get a compiler error.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> totalCost <span style="color:#f92672">=</span> cost1 <span style="color:#f92672">+</span> cost2 <span style="color:#75715e">// Error: The type &#39;Cost&#39; does not support the &#39;+&#39; operator
+</span></code></pre></div><p>Fortunately this is easy to overcome. All we need to do is implement the <code>+</code> operator for the type. We do this by adding a <code>static member</code> to our type alias. We add the keyword <code>with</code> to the end of our previous type alias definition and provide the <code>+</code> static member.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// Updated definition of &#39;Cost&#39;
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Cost</span> <span style="color:#f92672">=</span> Cost <span style="color:#66d9ef">of</span> <span style="color:#66d9ef">decimal</span> <span style="color:#66d9ef">with</span>
+    <span style="color:#66d9ef">static</span> <span style="color:#66d9ef">member</span> <span style="color:#f92672">(+)</span> <span style="color:#f92672">(</span>Cost c1<span style="color:#f92672">,</span> Cost c2<span style="color:#f92672">)</span> <span style="color:#f92672">=</span>
+        Cost <span style="color:#f92672">(</span>c1 <span style="color:#f92672">+</span> c2<span style="color:#f92672">)</span>
+</code></pre></div><p>The arguments for the <code>+</code> function may look a little odd so let me explain. By declaring the arguments of the function as <code>(Cost c1, Cost c2)</code> I am telling the compiler that I expect a <code>Cost</code> type as the input and I want you to unpack the value inside of <code>Cost</code> and put it in the <code>c1</code> and <code>c2</code> values respectively. This allows me to work with the <code>decimal</code> values inside of the <code>Cost</code> type. The function itself adds the two values together and then wraps the result in a <code>Cost</code>. Now when we go to add two <code>Cost</code> values we no longer get an error.</p>
+<p>The beauty of this is that I have maintained control over the values that <code>Cost</code> can take on. I declared a <code>create</code> function which insures positive values. I only allow addition of <code>Cost</code> types which means that a <code>Cost</code> will only ever be positive. Some people may brush this off as trivial but as someone who has seen the damage that can happen from values going outside of the expected range, this extra work for reliability and peace of mind is worth it. For me, it is more efficient to ensure values cannot go outside their allowed bounds through controlling construction and operator definitions than to have value checks all over the place.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> totalCost <span style="color:#f92672">=</span> cost1 <span style="color:#f92672">+</span> cost2
+<span style="color:#75715e">// Result: val totalCost : Cost = Cost 15.0M
+</span></code></pre></div><h2 id="enabling-summation">Enabling Summation<a hidden class="anchor" aria-hidden="true" href="#enabling-summation">#</a></h2>
+<p>Well, that is great and all but what happens when we have a <code>List</code> of <code>Cost</code> values and we want to sum them. What happens then?</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> sumCosts <span style="color:#f92672">=</span>
+    <span style="color:#f92672">[</span>cost1<span style="color:#f92672">;</span> cost2<span style="color:#f92672">]</span>
+    <span style="color:#f92672">|&gt;</span> List.sum <span style="color:#75715e">// Error: The type &#39;Cost&#39; does not support the operator &#39;get_Zero&#39;
+</span></code></pre></div><p>Now when I first came across this I was confused. I had no idea what this <code>get_Zero</code> operator meant. After digging around for a while I was able to find some examples of what it was referring to. The <code>sum</code> function wants a starting point for the summation and it gets that by calling the <code>Zero</code> function on the type. I don&rsquo;t know why the compiler is saying <code>does not support the operator 'get_Zero'</code> instead of saying <code>the type does not have a function named 'Zero'</code>. Again, F# makes this easy to implement.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// Summable &#39;Cost&#39; type
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Cost</span> <span style="color:#f92672">=</span> Cost <span style="color:#66d9ef">of</span> <span style="color:#66d9ef">decimal</span> <span style="color:#66d9ef">with</span>
+    <span style="color:#66d9ef">static</span> <span style="color:#66d9ef">member</span> <span style="color:#f92672">(+)</span> <span style="color:#f92672">(</span>Cost c1<span style="color:#f92672">,</span> Cost c2<span style="color:#f92672">)</span> <span style="color:#f92672">=</span>
+        Cost <span style="color:#f92672">(</span>c1 <span style="color:#f92672">+</span> c2<span style="color:#f92672">)</span>
+
+    <span style="color:#66d9ef">static</span> <span style="color:#66d9ef">member</span> Zero <span style="color:#f92672">=</span>
+        Cost 0<span style="color:#f92672">.</span>0M
+</code></pre></div><p>Now when we try to sum a list of <code>Cost</code> values we get the expected result.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> sumCosts <span style="color:#f92672">=</span>
+    <span style="color:#f92672">[</span>cost1<span style="color:#f92672">;</span> cost2<span style="color:#f92672">]</span>
+    <span style="color:#f92672">|&gt;</span> List.sum
+<span style="color:#75715e">// Result: val sumCosts : Cost = Cost 15.0M
+</span></code></pre></div><h2 id="freedom-through-constraints">Freedom Through Constraints<a hidden class="anchor" aria-hidden="true" href="#freedom-through-constraints">#</a></h2>
+<p>The more I dive into Domain Driven Design with F#, the more I love it. By ensuring values comply with expectations at the boundary of the domain, I am freed to reason about my algorithms without worrying about data going awry inside the domain. While it takes a few more keystrokes to define operations on these domain types, I hope that I showed you that it takes little effort in F# and can lead to more reliable and robust code. Keep calm and curry on!</p>
+
+</div>
+  <footer class="post-footer">
+  </footer>
+</article>
+    </main><footer class="footer">
+    <span>&copy; 2020 <a href="https://matthewcrews.com">Matthew Crews</a></span>
+    <span>&middot;</span>
+    <span>Powered by <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a></span>
+    <span>&middot;</span>
+    <span>Theme <a href="https://git.io/hugopapermod" rel="noopener" target="_blank">PaperMod</a></span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top" accesskey="g">
+    <button class="top-link" id="top-link" type="button">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6">
+            <path d="M12 6H0l6-6z" /></svg>
+    </button>
+</a>
+
+
+
+<script defer src="https://matthewcrews.com/assets/js/highlight.min.27cd435cc9ed6abb4b496581b151804f79f366c412620272bb94e2f5f598ebcc.js" integrity="sha256-J81DXMntartLSWWBsVGAT3nzZsQSYgJyu5Ti9fWY68w="
+    onload="hljs.initHighlightingOnLoad();"></script>
+<script>
+    window.onload = function () {
+        if (localStorage.getItem("menu-scroll-position")) {
+            document.getElementById('menu').scrollLeft = localStorage.getItem("menu-scroll-position");
+        }
+    }
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                behavior: "smooth"
+            });
+        });
+    });
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+    function menu_on_scroll() {
+        localStorage.setItem("menu-scroll-position", document.getElementById('menu').scrollLeft);
+    }
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+<script>
+    MathJax = {
+    tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+    }
+    };
+</script>
+<script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
+</script>
+
+</body>
+
+</html>

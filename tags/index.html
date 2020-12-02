@@ -5,7 +5,7 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <meta name=" robots" content="noindex, nofollow">
-<title>Tags | My New Hugo Site</title>
+<title>Tags | Matthew Crews</title>
 
 <meta name="keywords" content="" />
 <meta name="description" content="">
@@ -52,7 +52,7 @@
 <header class="header">
     <nav class="nav">
         <div class="logo">
-            <a href="https://matthewcrews.com" accesskey="h">My New Hugo Site</a>
+            <a href="https://matthewcrews.com" accesskey="h">Matthew Crews</a>
             <span class="logo-switches">
                 <span class="theme-toggle">
                     <a id="theme-toggle" accesskey="t">
@@ -79,7 +79,14 @@
                 
             </span>
         </div>
-        <ul class="menu" id="menu" onscroll="menu_on_scroll()"></ul>
+        <ul class="menu" id="menu" onscroll="menu_on_scroll()">
+            <li>
+                <a href="https://matthewcrews.com/about">
+                    <span>
+                        About
+                    </span>
+                </a>
+            </li></ul>
     </nav>
 </header>
 
@@ -93,7 +100,7 @@
 
 
     </main><footer class="footer">
-    <span>&copy; 2020 <a href="https://matthewcrews.com">My New Hugo Site</a></span>
+    <span>&copy; 2020 <a href="https://matthewcrews.com">Matthew Crews</a></span>
     <span>&middot;</span>
     <span>Powered by <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a></span>
     <span>&middot;</span>
@@ -151,8 +158,15 @@
     })
 
 </script>
-<script type="text/javascript"
-  src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML">
+<script>
+    MathJax = {
+    tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+    }
+    };
+</script>
+<script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
 </script>
 
 </body>
