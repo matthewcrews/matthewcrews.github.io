@@ -20,6 +20,15 @@ y=1.2x_{1}+1.7x_{2}+x_{3} } $$</description>
     </item>
     
     <item>
+      <title>The Mentor Matching Problem</title>
+      <link>https://matthewcrews.com/blog/2020-12-03-mathematical-planning-for-mentor-pairing/</link>
+      <pubDate>Tue, 01 Dec 2020 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2020-12-03-mathematical-planning-for-mentor-pairing/</guid>
+      <description>There are few things I love more than a fresh mathematical planning challenge so I was delighted when Kevin Avignon reached out to me and asked me to look at a question he had posted on the Software Engineer Stack Exchange site. He wanted to know whether the question was a candidate for Mathematical Planning. The question is a really interesting problem of pairing Mentors and Mentees. Mentors have a set of skills they can teach.</description>
+    </item>
+    
+    <item>
       <title>What I Look for in a Machine Learning Engineer</title>
       <link>https://matthewcrews.com/blog/2020-10-08-what-i-look-for-in-a-machine-learning-engineer/</link>
       <pubDate>Wed, 07 Oct 2020 00:00:00 +0000</pubDate>
