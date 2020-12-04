@@ -5,7 +5,16 @@
     <link>https://matthewcrews.com/blog/</link>
     <description>Recent content in Blogs on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Thu, 03 Dec 2020 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Fri, 04 Dec 2020 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>The Under Appreciated Power of Object Expressions</title>
+      <link>https://matthewcrews.com/blog/2020-12-04-the-under-appreciated-power-of-object-expressions/</link>
+      <pubDate>Fri, 04 Dec 2020 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2020-12-04-the-under-appreciated-power-of-object-expressions/</guid>
+      <description>There is a feature of F# this is incredibly powerful and rarely talked about: The Object Expression. It is such a simple idea that it is almost boring but the implications of it are profound. We often define an interface to abstract the implementation of an object so that we can code against different implementations. By programming against an IEnumerable or IDictionary, we can write algorithms which work against a host of different backing data structures.</description>
+    </item>
+    
     <item>
       <title>The Mentor Matching Problem</title>
       <link>https://matthewcrews.com/blog/2020-12-03-mathematical-planning-for-mentor-pairing/</link>

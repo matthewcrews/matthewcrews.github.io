@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name=" robots" content="noindex, nofollow">
+<title>The Under Appreciated Power of Object Expressions | Matthew Crews</title>
+
+<meta name="keywords" content="" />
+<meta name="description" content="There is a feature of F# this is incredibly powerful and rarely talked about: The Object Expression. It is such a simple idea that it is almost boring but the implications of it are profound. We often define an interface to abstract the implementation of an object so that we can code against different implementations. By programming against an IEnumerable or IDictionary, we can write algorithms which work against a host of different backing data structures.">
+<meta name="author" content="">
+<link rel="canonical" href="https://matthewcrews.com/blog/2020-12-04-the-under-appreciated-power-of-object-expressions/" />
+<link href="https://matthewcrews.com/assets/css/stylesheet.min.8cbe03cd36d575ee2d4398db2c2b89694db1f7cf71d909908b0cf8aeca1ad007.css" integrity="" rel="preload stylesheet"
+    as="style">
+
+<link rel="icon" href="https://matthewcrews.com/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://matthewcrews.com/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://matthewcrews.com/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://matthewcrews.com/apple-touch-icon.png">
+<link rel="mask-icon" href="https://matthewcrews.com/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<meta name="generator" content="Hugo 0.78.2" />
+
+
+
+
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+<noscript>
+    <style type="text/css">
+        .theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+</noscript>
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="https://matthewcrews.com" accesskey="h">Matthew Crews</a>
+            <span class="logo-switches">
+                <span class="theme-toggle">
+                    <a id="theme-toggle" accesskey="t">
+                        <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                        <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                    </a>
+                </span>
+                
+            </span>
+        </div>
+        <ul class="menu" id="menu" onscroll="menu_on_scroll()">
+            <li>
+                <a href="https://matthewcrews.com/about">
+                    <span>
+                        About
+                    </span>
+                </a>
+            </li></ul>
+    </nav>
+</header>
+
+    <main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <h1 class="post-title">
+      The Under Appreciated Power of Object Expressions
+    </h1>
+    <div class="post-meta">December 4, 2020
+
+    </div>
+  </header> 
+
+  <div class="post-content">
+<p>There is a feature of F# this is incredibly powerful and rarely talked about: The Object Expression. It is such a simple idea that it is almost boring but the implications of it are profound. We often define an interface to abstract the implementation of an object so that we can code against different implementations. By programming against an <code>IEnumerable</code> or <code>IDictionary</code>, we can write algorithms which work against a host of different backing data structures. To use these abstractions, we implement the interface on our classes.</p>
+<p>What if I told you that there is a different way? What if I told you it was possible to build objects in a Frankenstien style where we could define each member as we chose? This may sound a little odd but the freedom it gives you in testing is incredible. Before we dive deep into how we use Object Expressions, let&rsquo;s talk about what they are.</p>
+<h2 id="object-expression-what-art-thou">Object Expression: What art thou?<a hidden class="anchor" aria-hidden="true" href="#object-expression-what-art-thou">#</a></h2>
+<p>Whenever I start working with a new developer, there are two things I stress with them when it comes to reasoning about F#.</p>
+<ol>
+<li>F# does not have variables, it has values$^1$</li>
+<li>Everything is an expression. Everything returns something, even if that something is nothing$^2$</li>
+</ol>
+<p>These two ideas can cause some cognitive dissonance for imperative programmers used to C, C++, C# or their brethren. Those are great languages. The family of C languages and their imperative programming cousins just have a different philosophy. In imperitive programming you can just perform an action without it returning anything. In F#, something will always be returned because everything is an expression.</p>
+<p>Alright, so I&rsquo;ve established that F# has a different way of thinking. But what makes Object Expressions special? Well, if we were working in C# and we wanted to create an object which fulfilled an interface contract, we would need to declare that type and then implement the interface. Let&rsquo;s declare an incredibly simple interface <code>IAnimal</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-csharp" data-lang="csharp"><span style="color:#66d9ef">interface</span> IAnimal
+{
+    <span style="color:#66d9ef">string</span> Name
+    {
+        <span style="color:#66d9ef">get</span>;
+    }
+    <span style="color:#66d9ef">double</span> Size
+    {
+        <span style="color:#66d9ef">get</span>;
+    }
+}
+</code></pre></div><p>We have now declared an <code>IAnimal</code> interface. If we want to work with an instance of it, we must define a class which implements this interface. Let us define a <code>Chicken</code> class which implements this interface. Let&rsquo;s assume that I want instances of this class to be immutable to protect against mutation. I&rsquo;ll go ahead and make my life easier by using a C# 9.0 feature, Records.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-csharp" data-lang="csharp"><span style="color:#66d9ef">public</span> record Chicken : IAnimal
+{
+    <span style="color:#66d9ef">public</span> <span style="color:#66d9ef">string</span> Name { <span style="color:#66d9ef">get</span>; }
+    <span style="color:#66d9ef">public</span> <span style="color:#66d9ef">double</span> Size { <span style="color:#66d9ef">get</span>; }
+    <span style="color:#66d9ef">public</span> Chicken(<span style="color:#66d9ef">string</span> name, <span style="color:#66d9ef">double</span> size) =&gt; (Name, Size) = (name, size);
+}
+</code></pre></div><p>Okay, I have an interface and now I have a class which implements that interface. If I want to play around with functions or methods that take that interface as an argument, I will need to create instances of <code>Chicken</code> unless I want to declare another class which implements <code>IAnimal</code>. For testing purposes I may define a <code>MockAnimal</code> which has different behaviors. I may have to define several different <code>MockAnimal</code> classes if I want test different behaviors.</p>
+<p>So, this is all fine and doesn&rsquo;t seem too cumbersome but the more complex the interface the more you will find yourself creating mock versions to test with. F# provides a different mechanism for implementing interfaces, the Object Expression! Let&rsquo;s say we&rsquo;ve abstracted the interaction with a database behind an <code>IRepository</code> inteface. Let&rsquo;s declare a silly <code>IRepository</code> for storing and retrieving Pigs. Here&rsquo;s that interface in F#.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Pig</span> <span style="color:#f92672">=</span> <span style="color:#f92672">{</span>
+    <span style="color:#75715e">// Some fields which define a pig
+</span><span style="color:#75715e"></span><span style="color:#f92672">}</span>
+
+<span style="color:#66d9ef">type</span> <span style="color:#a6e22e">IRepository</span> <span style="color:#f92672">=</span>
+    <span style="color:#66d9ef">abstract</span> <span style="color:#66d9ef">member</span> GetById <span style="color:#f92672">:</span> id<span style="color:#f92672">:</span><span style="color:#66d9ef">int64</span> <span style="color:#f92672">-&gt;</span> Pig
+    <span style="color:#66d9ef">abstract</span> <span style="color:#66d9ef">member</span> Save <span style="color:#f92672">:</span> pig<span style="color:#f92672">:</span>Pig <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">unit</span>
+</code></pre></div><p>Our interface has two methods. One for saving Pigs and one for retrieving Pigs by an Id. In both cases we could possibly get an exception due to the database not being available. If we were in C# and we wanted to work with this interface, we would need to define a class which implements this interface. What if we could just define an object which implements this interface out of thin air? Let me show you how to do that.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> geyById id <span style="color:#f92672">=</span> <span style="color:#75715e">// A function in our domain that does the work of querying
+</span><span style="color:#75715e"></span>
+<span style="color:#66d9ef">let</span> save <span style="color:#f92672">(</span>pig<span style="color:#f92672">:</span>Pig<span style="color:#f92672">)</span> <span style="color:#f92672">=</span> <span style="color:#75715e">// A function in our domain that does the work of saving
+</span><span style="color:#75715e"></span>
+<span style="color:#66d9ef">let</span> repository <span style="color:#f92672">=</span>
+    <span style="color:#f92672">{</span> <span style="color:#66d9ef">new</span> IRepository <span style="color:#66d9ef">with</span>
+        <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">GetById</span> id <span style="color:#f92672">=</span> getById id
+        <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">Save</span> pig <span style="color:#f92672">=</span> save pig
+    <span style="color:#f92672">}</span>
+</code></pre></div><p>What just happened? There are two functions in the domain which know how to do the work of retrieving and saving our pigs: <code>getById</code> and <code>save</code>. Instead of defining a new class, we said, &ldquo;Hey F#, I want an object which fulfilles the <code>IRepository</code> interface and I want you to use these functions to do it.&rdquo; We don&rsquo;t need to define a class; we can just make an object and bolt together functions to fulfill the <code>IRepository</code> contract. I think of this as interface by Frankenstein assembly.</p>
+<h2 id="buy-why-do-i-care">Buy Why Do I Care?<a hidden class="anchor" aria-hidden="true" href="#buy-why-do-i-care">#</a></h2>
+<p>While that example may be cute, it may not wow you. Let&rsquo;s talk where this is impactful: testing! One of the most difficult challenges we face when writing robust code is ensuring that our services both succeed when given clean inputs but also fail, the way we want them to. As a policy, we always write tests which confirm that the happy path works as intended and that the various failure modes are dealt with correctly.</p>
+<p>This type of testing gets painful when you have external dependencies like databases or APIs that are outside your domain. You either must be able to stand up a mock version of the service in your CI/CD pipeline or implement mock versions of your classes just for testing. What if instead of that, we could create an object which behaved exactly as intended?</p>
+<p>Let&rsquo;s look at testing the <code>IRepository</code> interface. I have abstracted out what the backing service is in the case. Let&rsquo;s I want to verify that my business logic responds appropriately to a <code>SqlException</code>. Rather than standing up a SQL Server instance and artificially creating a bad state, I&rsquo;ll create an object that behaves exactly how I want it.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> mockRepository <span style="color:#f92672">=</span>
+    <span style="color:#f92672">{</span> <span style="color:#66d9ef">new</span> IRepository <span style="color:#66d9ef">with</span>
+        <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">GetById</span> id <span style="color:#f92672">=</span> raise <span style="color:#f92672">(</span><span style="color:#66d9ef">new</span> SqlException()<span style="color:#f92672">)</span>
+        <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">Save</span> pig <span style="color:#f92672">=</span> ()
+    <span style="color:#f92672">}</span>
+</code></pre></div><p>This <code>mockRespository</code> will always raise a <code>SqlException</code> and will appear to be successful any time I call the <code>Save</code> method. I can have my mock repository behave any way that I want by just swapping out different functions to give the desired behavior. I don&rsquo;t have to define a new class each time I want slightly different behavior. Where this gets even more exciting is when you are trying to test failure modes which involve multiple external services. It is relatively easy to abstract all of them behind interfaces and the construct mock instances that will behave exactly as intended.</p>
+<p>I believe that the Object Expression feature in F# is really under appreciated. It makes it easy to create arbitrary implementations of interfaces. I am sure that it has utility outside of testing as well. I have found that it makes unit and property-based testing relatively painless. I hope this opens your eyes a little to how you can streamline your testing needs in F#.</p>
+<blockquote>
+<p>$^1$ Technically it is possible to declare a variable in F#. You must add the <code>mutable</code> modifier to the declaration. The key point is that F# deals with values by default, not variables.</p>
+</blockquote>
+<blockquote>
+<p>$^2$ When F# returns &ldquo;nothing&rdquo;, it returns the type <code>unit</code>. The key thing is that even an action which does not &ldquo;seem&rdquo; to return a value is still actually returning something. The implications are deeper than I have time for here. I encourage the curious to look into <a href="https://bartoszmilewski.com/2014/10/28/category-theory-for-programmers-the-preface/">&ldquo;Category Theory for Programmers&rdquo;</a> by Barstosz Milewski.</p>
+</blockquote>
+
+</div>
+  <footer class="post-footer">
+  </footer>
+</article>
+    </main><footer class="footer">
+    <span>&copy; 2020 <a href="https://matthewcrews.com">Matthew Crews</a></span>
+    <span>&middot;</span>
+    <span>Powered by <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a></span>
+    <span>&middot;</span>
+    <span>Theme <a href="https://git.io/hugopapermod" rel="noopener" target="_blank">PaperMod</a></span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top" accesskey="g">
+    <button class="top-link" id="top-link" type="button">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6">
+            <path d="M12 6H0l6-6z" /></svg>
+    </button>
+</a>
+
+
+
+<script defer src="https://matthewcrews.com/assets/js/highlight.min.27cd435cc9ed6abb4b496581b151804f79f366c412620272bb94e2f5f598ebcc.js" integrity="sha256-J81DXMntartLSWWBsVGAT3nzZsQSYgJyu5Ti9fWY68w="
+    onload="hljs.initHighlightingOnLoad();"></script>
+<script>
+    window.onload = function () {
+        if (localStorage.getItem("menu-scroll-position")) {
+            document.getElementById('menu').scrollLeft = localStorage.getItem("menu-scroll-position");
+        }
+    }
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                behavior: "smooth"
+            });
+        });
+    });
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+    function menu_on_scroll() {
+        localStorage.setItem("menu-scroll-position", document.getElementById('menu').scrollLeft);
+    }
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+<script>
+    MathJax = {
+    tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+    }
+    };
+</script>
+<script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
+</script>
+
+</body>
+
+</html>
