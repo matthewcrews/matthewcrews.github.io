@@ -5,7 +5,17 @@
     <link>https://matthewcrews.com/blog/</link>
     <description>Recent content in Blogs on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Fri, 04 Dec 2020 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 07 Dec 2020 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Reindeer Secret Santa Assignment Problem</title>
+      <link>https://matthewcrews.com/blog/2020-12-07-reindeer-secret-santa-assignment-problem/</link>
+      <pubDate>Mon, 07 Dec 2020 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2020-12-07-reindeer-secret-santa-assignment-problem/</guid>
+      <description>Note: To see the completed code, please go here. All code for Model Mondays is kept in this repo and is MIT licensed. Feel free to use it!
+ I was having a chat with a friend about what types of problems are good candidates for Mathematical Planning. He posed the question, &amp;ldquo;Would a Secret Santa exchange be a good candidate?&amp;rdquo; At first, I thought, &amp;ldquo;no.&amp;rdquo; As we kept chatting though, I changed my mind.</description>
+    </item>
+    
     <item>
       <title>The Under Appreciated Power of Object Expressions</title>
       <link>https://matthewcrews.com/blog/2020-12-04-the-under-appreciated-power-of-object-expressions/</link>
