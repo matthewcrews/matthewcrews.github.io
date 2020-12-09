@@ -5,7 +5,17 @@
     <link>https://matthewcrews.com/blog/</link>
     <description>Recent content in Blogs on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Mon, 07 Dec 2020 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 09 Dec 2020 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Why I Love F# for Mathematical Planning</title>
+      <link>https://matthewcrews.com/blog/2020-12-09-why-i-love-fsharp-for-mathematical-planning/</link>
+      <pubDate>Wed, 09 Dec 2020 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2020-12-09-why-i-love-fsharp-for-mathematical-planning/</guid>
+      <description>A designer knows he has achieved perfection not when there is nothing left to add, but when there is nothing left to take away
+ Antoine de Saint-Exupery   On my journey of growing as a developer, I am consistently inspired by language features which seem incredibly simple but yield remarkable benefit. As I try to master F#, I am frequently surprised by how powerful the language is for expressing ideas while having so few features.</description>
+    </item>
+    
     <item>
       <title>Reindeer Secret Santa Assignment Problem</title>
       <link>https://matthewcrews.com/blog/2020-12-07-reindeer-secret-santa-assignment-problem/</link>
