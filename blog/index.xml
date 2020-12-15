@@ -5,7 +5,16 @@
     <link>https://matthewcrews.com/blog/</link>
     <description>Recent content in Blogs on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Wed, 09 Dec 2020 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 14 Dec 2020 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Combining Mathematical Programming with Machine Learning - Part 1</title>
+      <link>https://matthewcrews.com/blog/2020-12-14-combining-mathematical-programming-with-machine-learning-part-1/</link>
+      <pubDate>Mon, 14 Dec 2020 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2020-12-14-combining-mathematical-programming-with-machine-learning-part-1/</guid>
+      <description>One of the questions that I love to answer is, &amp;ldquo;What is the difference between Mathematical Programming and Machine Learning?&amp;rdquo; This is an excellent question. The fields are close to one another and solutions often involve both techniques. The way I differentiate is based on what question they are meant to answer. Mathematical Programming is primarily concerned with answering the question, &amp;ldquo;What should we do?&amp;rdquo; Machine Learning answers the question, &amp;ldquo;What is most likely?</description>
+    </item>
+    
     <item>
       <title>Why I Love F# for Mathematical Planning</title>
       <link>https://matthewcrews.com/blog/2020-12-09-why-i-love-fsharp-for-mathematical-planning/</link>
