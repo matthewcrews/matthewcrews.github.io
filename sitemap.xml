@@ -4,91 +4,96 @@
   
   <url>
     <loc>https://matthewcrews.com/blog/</loc>
-    <lastmod>2020-12-14T00:00:00+00:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>https://matthewcrews.com/blog/2020-12-14-combining-mathematical-planning-with-machine-learning-part-1/</loc>
-    <lastmod>2020-12-14T00:00:00+00:00</lastmod>
+    <lastmod>2020-12-19T00:00:00+00:00</lastmod>
   </url>
   
   <url>
     <loc>https://matthewcrews.com/</loc>
+    <lastmod>2020-12-19T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2020/12/2020-12-21/</loc>
+    <lastmod>2020-12-19T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://matthewcrews.com/blog/2020/12/2020-12-14/</loc>
     <lastmod>2020-12-14T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2020-12-09-why-i-love-fsharp-for-mathematical-planning/</loc>
+    <loc>https://matthewcrews.com/blog/2020/12/2020-12-09/</loc>
     <lastmod>2020-12-09T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2020-12-07-reindeer-secret-santa-assignment-problem/</loc>
+    <loc>https://matthewcrews.com/blog/2020/12/2020-12-07/</loc>
     <lastmod>2020-12-07T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2020-12-04-the-under-appreciated-power-of-object-expressions/</loc>
+    <loc>https://matthewcrews.com/blog/2020/12/2020-12-04/</loc>
     <lastmod>2020-12-04T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2020-12-03-mathematical-planning-for-mentor-pairing/</loc>
+    <loc>https://matthewcrews.com/blog/2020/12/2020-12-03/</loc>
     <lastmod>2020-12-03T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2020-12-01-modeling-nonlinear-functions-with-flips/</loc>
+    <loc>https://matthewcrews.com/blog/2020/12/2020-12-01/</loc>
     <lastmod>2020-12-01T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2020-10-08-what-i-look-for-in-a-machine-learning-engineer/</loc>
+    <loc>https://matthewcrews.com/blog/2020/10/2020-10-08/</loc>
     <lastmod>2020-10-07T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2019-10-27-the-anatomy-of-an-optimization-model/</loc>
+    <loc>https://matthewcrews.com/blog/2019/2019-10-27-the-anatomy-of-an-optimization-model/</loc>
     <lastmod>2019-11-11T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2018-05-24-discrete-optimization-with-cutting-planes/</loc>
+    <loc>https://matthewcrews.com/blog/2018/2018-05-24-discrete-optimization-with-cutting-planes/</loc>
     <lastmod>2018-05-25T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2018-05-22-discrete-optimization-with-branch-and-bound/</loc>
+    <loc>https://matthewcrews.com/blog/2018/2018-05-22-discrete-optimization-with-branch-and-bound/</loc>
     <lastmod>2018-05-22T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2018-05-13-creating-summable-domain-types/</loc>
+    <loc>https://matthewcrews.com/blog/2018/2018-05-13-creating-summable-domain-types/</loc>
     <lastmod>2018-05-13T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2018-05-04-fsharp-for-optimization-modeling/</loc>
+    <loc>https://matthewcrews.com/blog/2018/2018-05-04-fsharp-for-optimization-modeling/</loc>
     <lastmod>2018-05-04T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2018-01-27-domains-run-amok/</loc>
+    <loc>https://matthewcrews.com/blog/2018/2018-01-27-domains-run-amok/</loc>
     <lastmod>2018-01-27T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2018-01-14-the-divide-operator-is-a-lie/</loc>
+    <loc>https://matthewcrews.com/blog/2018/2018-01-14-the-divide-operator-is-a-lie/</loc>
     <lastmod>2018-01-14T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2018-01-06-my-most-expensive-error/</loc>
+    <loc>https://matthewcrews.com/blog/2018/2018-01-06-my-most-expensive-error/</loc>
     <lastmod>2018-01-06T00:00:00+00:00</lastmod>
   </url>
   
   <url>
-    <loc>https://matthewcrews.com/blog/2018-01-05-using-fsharp-to-parse-html/</loc>
+    <loc>https://matthewcrews.com/blog/2018/2018-01-05-using-fsharp-to-parse-html/</loc>
     <lastmod>2018-01-05T00:00:00+00:00</lastmod>
   </url>
   
