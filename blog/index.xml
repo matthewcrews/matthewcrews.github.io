@@ -5,11 +5,11 @@
     <link>https://matthewcrews.com/blog/</link>
     <description>Recent content in Blogs on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Sat, 19 Dec 2020 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 21 Dec 2020 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Maximizing Profitability of Inventory with Mathematical Planning and Machine Learning in F# - Part 2</title>
       <link>https://matthewcrews.com/blog/2020/12/2020-12-21/</link>
-      <pubDate>Sat, 19 Dec 2020 00:00:00 +0000</pubDate>
+      <pubDate>Mon, 21 Dec 2020 00:00:00 +0000</pubDate>
       
       <guid>https://matthewcrews.com/blog/2020/12/2020-12-21/</guid>
       <description>In a previous post we discussed the problem of stocking our food cart to maximize our profitability. We created a simple heuristic and then performed simulations to evaluate the expected profitability. We discussed that knowing the expected profitability was not enough, we calculated Confidence Intervals to understand the where the true expected profitability lies. This week we want to find a better plan for packing the food cart. We will use Mathematical Planning to find an answer which maximize the expected profitability which outperforms the heuristic used in the first post.</description>
