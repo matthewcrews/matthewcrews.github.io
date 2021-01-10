@@ -5,13 +5,23 @@
     <link>https://matthewcrews.com/blog/</link>
     <description>Recent content in Blogs on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Fri, 01 Jan 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sat, 09 Jan 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Learning Resources for F#</title>
+      <link>https://matthewcrews.com/blog/2021/01/2021-01-09/</link>
+      <pubDate>Sat, 09 Jan 2021 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2021/01/2021-01-09/</guid>
+      <description>One of the questions that I get quite a bit is, &amp;ldquo;How did you learn F#?&amp;rdquo; I kept getting this question, so I decided to write a short post where I laid out what I found to be the most useful resources to for me to develop my F# skills.
+Practice This first piece of advice that I give to people is to choose an algorithm they already know and write it in F#.</description>
+    </item>
+    
     <item>
       <title>Maximizing Profitability of Inventory with Mathematical Planning and Machine Learning in F# - Part 3</title>
-      <link>https://matthewcrews.com/blog/2021/2020-01-01/</link>
+      <link>https://matthewcrews.com/blog/2021/01/2020-01-01/</link>
       <pubDate>Fri, 01 Jan 2021 00:00:00 +0000</pubDate>
       
-      <guid>https://matthewcrews.com/blog/2021/2020-01-01/</guid>
+      <guid>https://matthewcrews.com/blog/2021/01/2020-01-01/</guid>
       <description>In the previous two posts in this series we introduced the Food Cart Problem. We want a plan for stocking our Food Cart which will maximizes our revenue. In the first post we discussed the foods that we can stock and the restrictions we are operating under. We introduced a simple heuristic for stocking the food cart and created a simulation in order to validate what our expected revenue is.</description>
     </item>
     
