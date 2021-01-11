@@ -5,7 +5,16 @@
     <link>https://matthewcrews.com/blog/</link>
     <description>Recent content in Blogs on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Sat, 09 Jan 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 11 Jan 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Minimizing Waste for the Cutting Stock Problem</title>
+      <link>https://matthewcrews.com/blog/2021/01/2021-01-11/</link>
+      <pubDate>Mon, 11 Jan 2021 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2021/01/2021-01-11/</guid>
+      <description>I was recently posed the question, &amp;ldquo;Can you use Mathematical Planning to optimize the Cutting Stock problem?&amp;rdquo; For those who are not familiar with this problem, you can find the Wikipedia article here. In summary, you have a stock size of paper material from which you need to produce smaller sizes. In the example provided on Wikipedia, the stock size is 5600mm. You are asked to produce a variety of sizes between 1380mm and 2200mm.</description>
+    </item>
+    
     <item>
       <title>Learning Resources for F#</title>
       <link>https://matthewcrews.com/blog/2021/01/2021-01-09/</link>
