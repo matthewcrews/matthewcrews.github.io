@@ -328,17 +328,18 @@ generate <span style="color:#f92672">[</span>initialCandidate<span style="color:
 <span style="color:#f92672">|</span> Optimal solution <span style="color:#f92672">-&gt;</span>
     <span style="color:#66d9ef">let</span> values <span style="color:#f92672">=</span> 
         Solution.getValues solution planDecs
-        <span style="color:#f92672">|&gt;</span> Map.filter <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> plan quantity <span style="color:#f92672">-&gt;</span> quantity <span style="color:#f92672">&gt;</span> 0<span style="color:#f92672">.</span>0<span style="color:#f92672">)</span>
+        <span style="color:#f92672">|&gt;</span> Map.filter <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> <span style="color:#f92672">_</span> quantity <span style="color:#f92672">-&gt;</span> quantity <span style="color:#f92672">&gt;</span> 0<span style="color:#f92672">.</span>0<span style="color:#f92672">)</span>
 
-    <span style="color:#66d9ef">let</span> totalNumberOfCuts <span style="color:#f92672">=</span>
+    <span style="color:#66d9ef">let</span> totalNumberOfRolls <span style="color:#f92672">=</span>
         values
         <span style="color:#f92672">|&gt;</span> Seq.sumBy <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> <span style="color:#f92672">(</span>KeyValue<span style="color:#f92672">(_,</span> count<span style="color:#f92672">))</span> <span style="color:#f92672">-&gt;</span> count<span style="color:#f92672">)</span>
 
+    printfn <span style="color:#e6db74">&#34;Quantity | Plan&#34;</span>
     <span style="color:#66d9ef">for</span> KeyValue<span style="color:#f92672">(</span>plan<span style="color:#f92672">,</span> quantity<span style="color:#f92672">)</span> <span style="color:#66d9ef">in</span> values <span style="color:#66d9ef">do</span>
-        printfn <span style="color:#f92672">$</span><span style="color:#e6db74">&#34;{plan} , {quantity}&#34;</span>
+        printfn <span style="color:#f92672">$</span><span style="color:#e6db74">&#34;%8.0f{quantity} | {plan}&#34;</span>
 
     printfn <span style="color:#e6db74">&#34;==========================================&#34;</span>
-    printfn <span style="color:#f92672">$</span><span style="color:#e6db74">&#34;Total Number of Cuts: {totalNumberOfCuts}&#34;</span>
+    printfn <span style="color:#f92672">$</span><span style="color:#e6db74">&#34;Total Number of Rolls: {totalNumberOfRolls}&#34;</span>
     printfn <span style="color:#e6db74">&#34;==========================================&#34;</span>
 
 <span style="color:#f92672">|</span> <span style="color:#f92672">_</span> <span style="color:#f92672">-&gt;</span> failwith <span style="color:#e6db74">&#34;Unable to solve&#34;</span>
