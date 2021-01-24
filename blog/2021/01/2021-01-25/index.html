@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name=" robots" content="noindex, nofollow">
+<title>Scheduling Jobs for Maximum Efficiency - Part 1 | Matthew Crews</title>
+
+<meta name="keywords" content="" />
+<meta name="description" content="I was recently having a discussion with a friend when they brought up a new problem they were looking into. He asked me if it was a good candidate for Mathematical Planning and I said, &ldquo;Absolutely!&rdquo; I am abstracting away the specific domain, but this is the essence of the problem.
+There are a set of machines which can process jobs. The jobs are of different types and sizes. There are three job-types: A, B, and C.">
+<meta name="author" content="">
+<link rel="canonical" href="https://matthewcrews.com/blog/2021/01/2021-01-25/" />
+<link href="https://matthewcrews.com/assets/css/stylesheet.min.9c32bf1b6c17e9563e4245665c0c316248e00cb23813f6271d48d8b6ded04b74.css" integrity="" rel="preload stylesheet"
+    as="style">
+
+<link rel="icon" href="https://matthewcrews.com/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://matthewcrews.com/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://matthewcrews.com/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://matthewcrews.com/apple-touch-icon.png">
+<link rel="mask-icon" href="https://matthewcrews.com/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<meta name="generator" content="Hugo 0.78.2" />
+
+
+
+
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+<noscript>
+    <style type="text/css">
+        .theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+</noscript>
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="https://matthewcrews.com" accesskey="h">Matthew Crews</a>
+            <span class="logo-switches">
+                <span class="theme-toggle">
+                    <a id="theme-toggle" accesskey="t">
+                        <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                        <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                    </a>
+                </span>
+                
+            </span>
+        </div>
+        <ul class="menu" id="menu" onscroll="menu_on_scroll()">
+            <li>
+                <a href="https://matthewcrews.com/about">
+                    <span>
+                        About
+                    </span>
+                </a>
+            </li></ul>
+    </nav>
+</header>
+
+    <main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <h1 class="post-title">
+      Scheduling Jobs for Maximum Efficiency - Part 1
+    </h1>
+    <div class="post-meta">January 24, 2021
+
+    </div>
+  </header> 
+
+  <div class="post-content">
+<p>I was recently having a discussion with a friend when they brought up a new problem they were looking into. He asked me if it was a good candidate for Mathematical Planning and I said, &ldquo;Absolutely!&rdquo; I am abstracting away the specific domain, but this is the essence of the problem.</p>
+<p>There are a set of machines which can process jobs. The jobs are of different types and sizes. There are three job-types: A, B, and C. Each machine has different job-types that it can process. Some machines can process any job-type while other machines can only work on one or two. At the beginning of the day, we are given a set of jobs to assign to the machines. We want to assign jobs to machines such that a) the machines are evenly loaded and b) we minimize the number of different job-types each machine must process.</p>
+<p>An ideal plan would have each machine with the same amount of work and only processing a single job-type. The reason we want a machine to only process a single job-type is to minimize the waste associated with changing between job-types. Switching between job-types is fast, it just creates unwanted waste. Let&rsquo;s start with creating a small domain model and generate some example data.</p>
+<blockquote>
+<p><strong>Note</strong>: You can find the full code example for this post <a href="https://github.com/matthewcrews/modelmondays/blob/main/2021-01-22-MachineAllocation/2021-01-22-MachineAllocation.fsx">here</a></p>
+</blockquote>
+<h2 id="a-domain-for-job-assignments">A Domain for Job Assignments<a hidden class="anchor" aria-hidden="true" href="#a-domain-for-job-assignments">#</a></h2>
+<p>Based on the description there are some clear types that we need to define: <code>Machine</code>, <code>Job</code>, and <code>JobType</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#f92672">[&lt;</span>RequireQualifiedAccess<span style="color:#f92672">&gt;]</span>
+<span style="color:#66d9ef">type</span> <span style="color:#a6e22e">JobType</span> <span style="color:#f92672">=</span>
+    <span style="color:#f92672">|</span> A
+    <span style="color:#f92672">|</span> B
+    <span style="color:#f92672">|</span> C
+
+<span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Job</span> <span style="color:#f92672">=</span> <span style="color:#f92672">{</span>
+    Id <span style="color:#f92672">:</span> int
+    JobType <span style="color:#f92672">:</span> JobType
+    Size <span style="color:#f92672">:</span> <span style="color:#66d9ef">float</span>
+<span style="color:#f92672">}</span> <span style="color:#66d9ef">with</span>
+    <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">ToString</span> () <span style="color:#f92672">=</span>
+        <span style="color:#f92672">$</span><span style="color:#e6db74">&#34;Job_{this.Id}&#34;</span>
+
+<span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Machine</span> <span style="color:#f92672">=</span> <span style="color:#f92672">{</span>
+    Id <span style="color:#f92672">:</span> int
+    JobTypes <span style="color:#f92672">:</span> Set<span style="color:#f92672">&lt;</span>JobType<span style="color:#f92672">&gt;</span>
+<span style="color:#f92672">}</span> <span style="color:#66d9ef">with</span>
+    <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">ToString</span> () <span style="color:#f92672">=</span>
+        <span style="color:#f92672">$</span><span style="color:#e6db74">&#34;Machine_{this.Id}&#34;</span>
+</code></pre></div><p>I like to override the <code>ToString</code> method because the <code>ConstraintBuilder</code> and <code>DecisionBuilder</code> in <code>Flips</code> use <code>ToString</code> for the naming of constraints and decisions. <code>JobType</code> is a straightforward Discriminated Union with three different cases <code>A</code>, <code>B</code>, and <code>C</code>. <code>Job</code> has an <code>Id</code> field for identifying a particular <code>Job</code>, a <code>JobType</code> which describes the type of job that it is, and the <code>Size</code>.</p>
+<p>The <code>Machine</code> type has an <code>Id</code> field and a <code>JobTypes</code> field. The <code>JobTypes</code> field is a <code>Set</code> of <code>JobType</code>. This represents the jobs the <code>Machine</code> can process.</p>
+<p>We now want to setup some data for us to be able to play with. These will be the parameters which will help us generate random data for us to work with.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// Set of JobTypes for iterating over and sampling from
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> jobTypes <span style="color:#f92672">=</span> 
+    <span style="color:#f92672">[|</span>
+        JobType.A
+        JobType.B
+        JobType.C
+    <span style="color:#f92672">|]</span>
+
+<span style="color:#75715e">// Some theoretical JobTypeSets to be used in generating
+</span><span style="color:#75715e">// random Machines
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> jobTypeSets <span style="color:#f92672">=</span>
+    <span style="color:#f92672">[|</span>
+        Set jobTypes
+        Set jobTypes<span style="color:#f92672">.[</span>1<span style="color:#f92672">..]</span>
+        Set jobTypes<span style="color:#f92672">.[..</span>1<span style="color:#f92672">]</span>
+    <span style="color:#f92672">|]</span>
+
+<span style="color:#75715e">// Setting up parameters for the example
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> rng <span style="color:#f92672">=</span> System.Random<span style="color:#f92672">(</span>123<span style="color:#f92672">)</span>
+<span style="color:#66d9ef">let</span> numberOfJobs <span style="color:#f92672">=</span> 20
+<span style="color:#66d9ef">let</span> numberOfMachines <span style="color:#f92672">=</span> 5
+<span style="color:#66d9ef">let</span> minJobSize <span style="color:#f92672">=</span> 1
+<span style="color:#66d9ef">let</span> maxJobSize <span style="color:#f92672">=</span> 3
+<span style="color:#66d9ef">let</span> maxWorkDifference <span style="color:#f92672">=</span> 1<span style="color:#f92672">.</span>0
+</code></pre></div><p><code>jobTypes</code> is an <code>Array</code> which holds each of the possible <code>JobType</code> cases. We will use this to create random jobs. The <code>jobTypeSets</code> value is an <code>Array</code> of <code>Set&lt;JobType&gt;</code>. These are the possible values for the <code>JobTypes</code> field of <code>Machine</code> that we will use for generating random machines. For this example, we will have 20 jobs and 5 machines to assign them to. <code>minJobSize</code> will control how small a job can be and <code>maxJobSize</code> will determine how large. The <code>maxWorkDifference</code> parameter will determine how different the loading of machines that we will allow.</p>
+<p>We now create some convenience functions for generating random data. We will also add a function for looking up a key in a <code>Map</code> but returning a default value when the key is not present.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> randomJobSize <span style="color:#f92672">(</span>rng<span style="color:#f92672">:</span> System.Random<span style="color:#f92672">)</span> <span style="color:#f92672">=</span>
+    rng<span style="color:#f92672">.</span>Next<span style="color:#f92672">(</span>minJobSize<span style="color:#f92672">,</span> maxJobSize<span style="color:#f92672">)</span>
+    <span style="color:#f92672">|&gt;</span> <span style="color:#66d9ef">float</span>
+
+<span style="color:#66d9ef">let</span> randomJobType <span style="color:#f92672">(</span>rng<span style="color:#f92672">:</span> System.Random<span style="color:#f92672">)</span> <span style="color:#f92672">=</span>
+    jobTypes<span style="color:#f92672">.[</span>rng<span style="color:#f92672">.</span>Next<span style="color:#f92672">(</span>0<span style="color:#f92672">,</span> jobTypes<span style="color:#f92672">.</span>Length <span style="color:#f92672">-</span> 1<span style="color:#f92672">)]</span>
+
+<span style="color:#66d9ef">let</span> randomJobTypeSet <span style="color:#f92672">(</span>rng<span style="color:#f92672">:</span> System.Random<span style="color:#f92672">)</span> <span style="color:#f92672">=</span>
+    jobTypeSets<span style="color:#f92672">.[</span>rng<span style="color:#f92672">.</span>Next<span style="color:#f92672">(</span>0<span style="color:#f92672">,</span> jobTypeSets<span style="color:#f92672">.</span>Length <span style="color:#f92672">-</span> 1<span style="color:#f92672">)]</span>
+
+<span style="color:#66d9ef">module</span> Map <span style="color:#f92672">=</span>
+
+    <span style="color:#75715e">// Useful when you want to look up a key in a Map but you want it to provide
+</span><span style="color:#75715e"></span>    <span style="color:#75715e">// a default value if the key is missing
+</span><span style="color:#75715e"></span>    <span style="color:#66d9ef">let</span> tryFindDefault <span style="color:#f92672">(</span>key<span style="color:#f92672">:</span> <span style="color:#66d9ef">&#39;</span>a<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>defaultValue<span style="color:#f92672">:</span> <span style="color:#66d9ef">&#39;</span>v<span style="color:#f92672">)</span> <span style="color:#f92672">(</span>m<span style="color:#f92672">:</span> Map<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">&#39;</span>a<span style="color:#f92672">,</span> <span style="color:#66d9ef">&#39;</span>v<span style="color:#f92672">&gt;)</span> <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">match</span> Map.tryFind key m <span style="color:#66d9ef">with</span>
+        <span style="color:#f92672">|</span> Some v <span style="color:#f92672">-&gt;</span> v
+        <span style="color:#f92672">|</span> None <span style="color:#f92672">-&gt;</span> defaultValue
+</code></pre></div><p>We can now generate a random set of jobs and machines to work with.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// Create some examples jobs
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> jobs <span style="color:#f92672">=</span>
+    <span style="color:#f92672">[</span>1<span style="color:#f92672">..</span>numberOfJobs<span style="color:#f92672">]</span>
+    <span style="color:#f92672">|&gt;</span> List.map <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> id <span style="color:#f92672">-&gt;</span> <span style="color:#f92672">{</span> 
+        Id <span style="color:#f92672">=</span> id
+        JobType <span style="color:#f92672">=</span> randomJobType rng
+        Length <span style="color:#f92672">=</span> randomJobSize rng 
+    <span style="color:#f92672">})</span>
+
+<span style="color:#75715e">// Create some test machines
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> machines <span style="color:#f92672">=</span>
+    <span style="color:#f92672">[</span>1<span style="color:#f92672">..</span>numberOfMachines<span style="color:#f92672">]</span>
+    <span style="color:#f92672">|&gt;</span> List.map <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> id <span style="color:#f92672">-&gt;</span> <span style="color:#f92672">{</span>
+        Id <span style="color:#f92672">=</span> id
+        JobTypes <span style="color:#f92672">=</span> randomJobTypeSet rng
+    <span style="color:#f92672">})</span>
+</code></pre></div><h2 id="formulating-the-problem">Formulating the Problem<a hidden class="anchor" aria-hidden="true" href="#formulating-the-problem">#</a></h2>
+<p>Now that we have some data to work with, we can get to formulating our model. Let&rsquo;s go ahead and open <code>Flips</code>. I love working with VS Code, Ionide, and <code>.fsx</code> files for this kind of exploration. The new <code>#r &quot;nuget: &lt;library name&gt;&quot;</code> syntax for using Nuget packages has been a game changer.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#f92672">#</span>r <span style="color:#e6db74">&#34;nuget: Flips&#34;</span>
+
+<span style="color:#66d9ef">open</span> Flips
+<span style="color:#66d9ef">open</span> Flips.Types
+<span style="color:#66d9ef">open</span> Flips.SliceMap
+</code></pre></div><p>We want to create a <code>Map</code> where they key is a <code>JobType</code> and the value is a list of <code>Job</code> that are of that type. This will make it easy for us to lookup the <code>Job</code>s of a given type.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// A Map from JobType to the Jobs which are of that type
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> jobsForJobType <span style="color:#f92672">=</span>
+    jobs
+    <span style="color:#f92672">|&gt;</span> List.groupBy <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> job <span style="color:#f92672">-&gt;</span> job<span style="color:#f92672">.</span>JobType<span style="color:#f92672">)</span>
+    <span style="color:#f92672">|&gt;</span> Map
+</code></pre></div><p>We now want to create a 1-dimensional <code>SliceMap</code> where the <code>'key</code> is a <code>Job</code> and the <code>'value</code> is the size of the job. This will make it easy for us to sum up how much work has been assigned to a <code>Machine</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// A SliceMap where the key is a Job and the value is the size of the Job
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> jobSizes <span style="color:#f92672">=</span>
+    jobs
+    <span style="color:#f92672">|&gt;</span> List.map <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> job <span style="color:#f92672">-&gt;</span> job<span style="color:#f92672">,</span> job<span style="color:#f92672">.</span>Size<span style="color:#f92672">)</span>
+    <span style="color:#f92672">|&gt;</span> SMap
+</code></pre></div><p>Now let&rsquo;s create the set of <code>Decision</code>s which will represent us assigning a <code>Job</code> to a <code>Machine</code>. We will store this in a 3-dimensional <code>SliceMap</code> keyed by the <code>Machine</code>, the <code>JobType</code>, and finally the <code>Job</code>. The reason we key by the <code>JobType</code> will become apparent later in the formulation. We will use a <code>Boolean</code> decision where <code>1.0</code> indicates that we are assigning the <code>Job</code> to a <code>Machine</code> and <code>0.0</code> indicates not.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// The Decisions which represent assigning a Job to a Machine
+</span><span style="color:#75715e">// The JobType index allows us to slice along the job type
+</span><span style="color:#75715e">// which is useful in some of the constraints
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> assignments <span style="color:#f92672">=</span>
+    DecisionBuilder <span style="color:#e6db74">&#34;Assignment&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> machine <span style="color:#66d9ef">in</span> machines <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> jobType <span style="color:#66d9ef">in</span> jobTypes <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> job <span style="color:#66d9ef">in</span> Map.tryFindDefault jobType [] jobsForJobType <span style="color:#f92672">-&gt;</span>
+            Boolean
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> SMap3
+</code></pre></div><p>Now that we have these decisions which represent assigning a job to a machine, we can formulate our first and most obvious constraints. Each job must be assigned to one machine. For each job we say that the sum of <code>assignments</code> for a given <code>job</code> across all machines and all job-types must be <code>1.0</code>. This forces the solver to find a solution where each <code>job</code> is assigned once.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// Each job must be assigned
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> jobsAssignmentConstraints <span style="color:#f92672">=</span>
+    ConstraintBuilder <span style="color:#e6db74">&#34;JobAssignment&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> job <span style="color:#66d9ef">in</span> jobs <span style="color:#f92672">-&gt;</span>
+            sum assignments<span style="color:#f92672">.[</span>All<span style="color:#f92672">,</span> All<span style="color:#f92672">,</span> job<span style="color:#f92672">]</span> <span style="color:#f92672">==</span> 1<span style="color:#f92672">.</span>0
+    <span style="color:#f92672">}</span>
+</code></pre></div><h2 id="constraint-or-objective">Constraint or Objective?<a hidden class="anchor" aria-hidden="true" href="#constraint-or-objective">#</a></h2>
+<p>We now come to an interesting question. Our original problem statement said that we want to minimize the number of different job-types a machine must deal with. Ideally each machine only works on a single job-type. We also said that we want the machines evenly loaded. When I was chatting with my friend I dug into this point. Which one of these objectives is more important because we can&rsquo;t optimize for both? This is where a modeler needs to work with their client to help them understand what the most important thing is truly.</p>
+<p>In our case, minimizing the different job-types for machines was the most important, so long as the machines were not too unevenly loaded. This means that the goal for even loading becomes a constraint and the objective remains the minimization of different job-types for machines. We will explore variations of this problem in future posts.</p>
+<h2 id="controlling-the-difference-in-loading">Controlling the Difference in Loading<a hidden class="anchor" aria-hidden="true" href="#controlling-the-difference-in-loading">#</a></h2>
+<p>Now that we have decided that even machine loading needs to be a constraint, we need to create some <code>Decision</code>s to control for it. We will create two <code>Decision</code>s. One will represent the value of the machine with the greatest loading and the other the machine with the least loading.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// A Decision which is meant to represent the MaxWork value across all Machines
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> maxWork <span style="color:#f92672">=</span> Decision.createContinuous <span style="color:#e6db74">&#34;MaxWork&#34;</span> 0<span style="color:#f92672">.</span>0 infinity
+<span style="color:#75715e">// A Decision which is meant to represent the MinWork value across all Machines
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> minWork <span style="color:#f92672">=</span> Decision.createContinuous <span style="color:#e6db74">&#34;MinWork&#34;</span> 0<span style="color:#f92672">.</span>0 infinity
+</code></pre></div><p>Now, we want to create a <code>Constraint</code> which states that the difference between these two values is not greater than the maximum allowed difference.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// We constrain the difference between the most heavily loaded machine
+</span><span style="color:#75715e">// and the least loaded
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> maxWorkDifferenceConstraint <span style="color:#f92672">=</span>
+    Constraint.create <span style="color:#e6db74">&#34;MaxWorkDifferent&#34;</span> <span style="color:#f92672">(</span>maxWork <span style="color:#f92672">-</span> minWork <span style="color:#f92672">&lt;==</span> maxWorkDifference<span style="color:#f92672">)</span>
+</code></pre></div><p>Okay, that&rsquo;s great but will it do anything? Right now, there is nothing that forces the <code>maxWork</code> decision to be equal to the loading of the most heavily loaded machine. There&rsquo;s also nothing which forces <code>minWork</code> to be equal to the loading of the most lightly loaded machine. The solver could set the values to <code>0.0</code> and be done with it. We need to create some constraints which will force <code>maxWork</code> and <code>minWork</code> to take on the loading of the most heavily and most lightly loaded machines.</p>
+<p>Let&rsquo;s create some constraints which state that the value of the <code>maxWork</code> decision must be greater than or equal to the loading of all the machines. This will force it to be a value above or equal to the maximum loading.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// The maxWork Decision must be greater or equal to all of the total work
+</span><span style="color:#75715e">// for each Machine
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> maxWorkConstraints <span style="color:#f92672">=</span>
+    ConstraintBuilder <span style="color:#e6db74">&#34;MaxWork&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> machine <span style="color:#66d9ef">in</span> machines <span style="color:#f92672">-&gt;</span>
+            maxWork <span style="color:#f92672">&gt;==</span> sum <span style="color:#f92672">(</span>assignments<span style="color:#f92672">.[</span>machine<span style="color:#f92672">,</span> All<span style="color:#f92672">,</span> All<span style="color:#f92672">]</span> <span style="color:#f92672">.*</span> jobSizes<span style="color:#f92672">)</span>
+    <span style="color:#f92672">}</span>
+</code></pre></div><p>We do a similar thing for the <code>minWork</code> decision. In this case we will say that <code>minWork</code> must be less than or equal to all the loadings of the machines.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// The minWork Decision must be less or equal to all of the total work
+</span><span style="color:#75715e">// for each Machine
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> minWorkConstraints <span style="color:#f92672">=</span>
+    ConstraintBuilder <span style="color:#e6db74">&#34;MinWork&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> machine <span style="color:#66d9ef">in</span> machines <span style="color:#f92672">-&gt;</span>
+            minWork <span style="color:#f92672">&lt;==</span> sum <span style="color:#f92672">(</span>assignments<span style="color:#f92672">.[</span>machine<span style="color:#f92672">,</span> All<span style="color:#f92672">,</span> All<span style="color:#f92672">]</span> <span style="color:#f92672">.*</span> jobSizes<span style="color:#f92672">)</span>
+    <span style="color:#f92672">}</span>
+</code></pre></div><p><code>maxWorkConstraints</code> and <code>minWorkConstraints</code> will force <code>maxWork</code> and <code>minWork</code> to take on the values of the most heavily and lightly loaded machines respectively. <code>maxWorkDifferenceConstraint</code> states that the difference between <code>maxWork</code> and <code>minWork</code> must be within the permissable bounds. All together these constraints will prevent the solver from distributing jobs across machines unevenly.</p>
+<h2 id="minimizing-the-job-types-for-machines">Minimizing the Job-Types for Machines<a hidden class="anchor" aria-hidden="true" href="#minimizing-the-job-types-for-machines">#</a></h2>
+<p>We now need to quantify how many different job-types are being assigned to machines. To do this, we will create a set of <code>Boolean</code> decisions which will indicate whether we have decided to assign a job of a given job-type to a machine. We will store these in a 2-dimensional <code>SliceMap</code> where the keys are the <code>Machine</code> and the <code>JobType</code>. <code>1</code> will represent that we have decided to assign a given <code>JobType</code> to a <code>Machine</code>. <code>0</code> will indicate that we did not. I like to think of this as &ldquo;turning on&rdquo; or &ldquo;turning off&rdquo; the job-type for the machine. We will call these decisions the <code>setups</code> decisions.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// A Decision which indicates whether we setup a given Machine for a 
+</span><span style="color:#75715e">// JobType at any point
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> setups <span style="color:#f92672">=</span>
+    DecisionBuilder <span style="color:#e6db74">&#34;Setups&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> machine <span style="color:#66d9ef">in</span> machines <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> jobType <span style="color:#66d9ef">in</span> jobTypes <span style="color:#f92672">-&gt;</span>
+            Boolean
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> SMap2
+</code></pre></div><p>We now want to create some constraints which will force the solver to turn on the decision to allow the assigning of a job-type to a machine. We will do this by saying that the sum of jobs of a given job-type must be less than or equal to our decision to assign that job-type to the machine multiplied by a large number. This will force the solver to &ldquo;turn on&rdquo; the job-type for the machine. In our case the &ldquo;large number&rdquo; will be the total number of jobs.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// We must turn the setups value for a given Machine and JobType to 1
+</span><span style="color:#75715e">// if we assign a Job of the given JobType to the Machine
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> setupConstraints <span style="color:#f92672">=</span>
+    ConstraintBuilder <span style="color:#e6db74">&#34;SetupRequired&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> machine <span style="color:#66d9ef">in</span> machines <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> jobType <span style="color:#66d9ef">in</span> jobTypes <span style="color:#f92672">-&gt;</span>
+            sum <span style="color:#f92672">(</span>assignments<span style="color:#f92672">.[</span>machine<span style="color:#f92672">,</span> jobType<span style="color:#f92672">,</span> All<span style="color:#f92672">])</span> <span style="color:#f92672">&lt;==</span> <span style="color:#f92672">(</span><span style="color:#66d9ef">float</span> numberOfJobs<span style="color:#f92672">)</span> <span style="color:#f92672">*</span> setups<span style="color:#f92672">.[</span>machine<span style="color:#f92672">,</span> jobType<span style="color:#f92672">]</span>
+    <span style="color:#f92672">}</span>
+</code></pre></div><p>We can now create an expression which represents the number of different job-types that are assigned to machines.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// An expression which is the sum of the Setups that will need to be performed
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> numberSetupsExpression <span style="color:#f92672">=</span> sum setups
+</code></pre></div><p>We use this expression to create our objective of minimizing the number of different job-types assigned to a machine.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// We want to minimize the number of setups
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> minSetupsObjective <span style="color:#f92672">=</span> Objective.create <span style="color:#e6db74">&#34;MinSetups&#34;</span> Minimize numberSetupsExpression
+</code></pre></div><p>We can now compose our model from the parts that we have created.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// Compose the model
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> model <span style="color:#f92672">=</span>
+    Model.create minSetupsObjective
+    <span style="color:#f92672">|&gt;</span> Model.addConstraints jobsAssignmentConstraints
+    <span style="color:#f92672">|&gt;</span> Model.addConstraints maxWorkConstraints
+    <span style="color:#f92672">|&gt;</span> Model.addConstraints minWorkConstraints
+    <span style="color:#f92672">|&gt;</span> Model.addConstraint maxWorkDifferenceConstraint
+    <span style="color:#f92672">|&gt;</span> Model.addConstraints setupConstraints
+</code></pre></div><p>We now ask the solver to find us a solution.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// Give the solver plenty of time to find a solution
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> settings <span style="color:#f92672">=</span> <span style="color:#f92672">{</span> Settings.basic <span style="color:#66d9ef">with</span> MaxDuration <span style="color:#f92672">=</span> 60_000L <span style="color:#f92672">}</span>
+
+<span style="color:#66d9ef">let</span> result <span style="color:#f92672">=</span> Solver.solve settings model
+</code></pre></div><p>If you want to see the code that prints out the results you can check it out <a href="https://github.com/matthewcrews/modelmondays/blob/260d21184df7f5803a4c6a72ba13e8b61db4962d/2021-01-22-MachineAllocation/2021-01-22-MachineAllocation.fsx#L195">here</a>. This is the solution the solver found.</p>
+<pre><code class="language-terminal" data-lang="terminal">Assignments:
+Machine: 1
+        Job: 3
+        Job: 9
+        Job: 12
+        Job: 14
+        Job: 18
+Machine: 2
+        Job: 4
+        Job: 5
+        Job: 20
+Machine: 3
+        Job: 7
+        Job: 8
+        Job: 10
+        Job: 11
+Machine: 4
+        Job: 1
+        Job: 15
+        Job: 16
+        Job: 19
+Machine: 5
+        Job: 2
+        Job: 6
+        Job: 13
+        Job: 17
+
+Machine Loading:
+Machine: 1 | Total Load: 6
+Machine: 2 | Total Load: 5
+Machine: 3 | Total Load: 6
+Machine: 4 | Total Load: 6
+Machine: 5 | Total Load: 6
+
+Max Diffence In Loading: 1
+</code></pre><h2 id="next-steps">Next Steps<a hidden class="anchor" aria-hidden="true" href="#next-steps">#</a></h2>
+<p>We&rsquo;ve only begone to explore this model. There are quite a few variations and nuances that I will dive into in the posts to come. In the future we will discuss adding machine capacity and dealing with infeasible models. We will also explore adding restrictions on just how much of a job-type can be assigned to a given machine. Some job-types cause more wear and therefore we do not want too much assigned to a single machine. We will also look at needing to re-plan part way through the day and look at scheduling over a longer time horizon.</p>
+<p>These types of scheduling problems are common and therefore it&rsquo;s valuable for us to explore how we can play and tweak with this model to make it suit our needs. Feel free to reach out with questions and ideas for modeling challenges in the future!</p>
+
+</div>
+  <footer class="post-footer">
+  </footer>
+</article>
+    </main><footer class="footer">
+    <span>&copy; 2021 <a href="https://matthewcrews.com">Matthew Crews</a></span>
+    <span>&middot;</span>
+    <span>Powered by <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a></span>
+    <span>&middot;</span>
+    <span>Theme <a href="https://git.io/hugopapermod" rel="noopener" target="_blank">PaperMod</a></span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top" accesskey="g">
+    <button class="top-link" id="top-link" type="button">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6">
+            <path d="M12 6H0l6-6z" /></svg>
+    </button>
+</a>
+
+
+
+<script defer src="https://matthewcrews.com/assets/js/highlight.min.27cd435cc9ed6abb4b496581b151804f79f366c412620272bb94e2f5f598ebcc.js" integrity="sha256-J81DXMntartLSWWBsVGAT3nzZsQSYgJyu5Ti9fWY68w="
+    onload="hljs.initHighlightingOnLoad();"></script>
+<script>
+    window.onload = function () {
+        if (localStorage.getItem("menu-scroll-position")) {
+            document.getElementById('menu').scrollLeft = localStorage.getItem("menu-scroll-position");
+        }
+    }
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                behavior: "smooth"
+            });
+        });
+    });
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+    function menu_on_scroll() {
+        localStorage.setItem("menu-scroll-position", document.getElementById('menu').scrollLeft);
+    }
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+<script>
+    MathJax = {
+    tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+    }
+    };
+</script>
+<script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
+</script>
+
+</body>
+
+</html>
