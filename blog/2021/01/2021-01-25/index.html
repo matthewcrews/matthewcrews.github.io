@@ -208,10 +208,10 @@ There are a set of machines which can process jobs. The jobs are of different ty
     <span style="color:#f92672">|&gt;</span> <span style="color:#66d9ef">float</span>
 
 <span style="color:#66d9ef">let</span> randomJobType <span style="color:#f92672">(</span>rng<span style="color:#f92672">:</span> System.Random<span style="color:#f92672">)</span> <span style="color:#f92672">=</span>
-    jobTypes<span style="color:#f92672">.[</span>rng<span style="color:#f92672">.</span>Next<span style="color:#f92672">(</span>0<span style="color:#f92672">,</span> jobTypes<span style="color:#f92672">.</span>Length <span style="color:#f92672">-</span> 1<span style="color:#f92672">)]</span>
+    jobTypes<span style="color:#f92672">.[</span>rng<span style="color:#f92672">.</span>Next<span style="color:#f92672">(</span>0<span style="color:#f92672">,</span> jobTypes<span style="color:#f92672">.</span>Length<span style="color:#f92672">)]</span>
 
 <span style="color:#66d9ef">let</span> randomJobTypeSet <span style="color:#f92672">(</span>rng<span style="color:#f92672">:</span> System.Random<span style="color:#f92672">)</span> <span style="color:#f92672">=</span>
-    jobTypeSets<span style="color:#f92672">.[</span>rng<span style="color:#f92672">.</span>Next<span style="color:#f92672">(</span>0<span style="color:#f92672">,</span> jobTypeSets<span style="color:#f92672">.</span>Length <span style="color:#f92672">-</span> 1<span style="color:#f92672">)]</span>
+    jobTypeSets<span style="color:#f92672">.[</span>rng<span style="color:#f92672">.</span>Next<span style="color:#f92672">(</span>0<span style="color:#f92672">,</span> jobTypeSets<span style="color:#f92672">.</span>Length<span style="color:#f92672">)]</span>
 
 <span style="color:#66d9ef">module</span> Map <span style="color:#f92672">=</span>
 
@@ -349,37 +349,37 @@ There are a set of machines which can process jobs. The jobs are of different ty
 </code></pre></div><p>If you want to see the code that prints out the results you can check it out <a href="https://github.com/matthewcrews/modelmondays/blob/260d21184df7f5803a4c6a72ba13e8b61db4962d/2021-01-22-MachineAllocation/2021-01-22-MachineAllocation.fsx#L195">here</a>. This is the solution the solver found.</p>
 <pre><code class="language-terminal" data-lang="terminal">Assignments:
 Machine: 1
-        Job: 3
-        Job: 9
+        Job: 1
+        Job: 6
         Job: 12
-        Job: 14
-        Job: 18
+        Job: 13
 Machine: 2
         Job: 4
-        Job: 5
-        Job: 20
-Machine: 3
-        Job: 7
         Job: 8
         Job: 10
         Job: 11
-Machine: 4
-        Job: 1
-        Job: 15
+Machine: 3
+        Job: 3
         Job: 16
+        Job: 18
+        Job: 20
+Machine: 4
+        Job: 2
+        Job: 14
+        Job: 17
         Job: 19
 Machine: 5
-        Job: 2
-        Job: 6
-        Job: 13
-        Job: 17
+        Job: 5
+        Job: 7
+        Job: 9
+        Job: 15
 
 Machine Loading:
 Machine: 1 | Total Load: 6
-Machine: 2 | Total Load: 5
+Machine: 2 | Total Load: 6
 Machine: 3 | Total Load: 6
 Machine: 4 | Total Load: 6
-Machine: 5 | Total Load: 6
+Machine: 5 | Total Load: 5
 
 Max Diffence In Loading: 1
 </code></pre><h2 id="next-steps">Next Steps<a hidden class="anchor" aria-hidden="true" href="#next-steps">#</a></h2>
