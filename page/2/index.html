@@ -4,14 +4,14 @@
 <head><meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<meta name=" robots" content="noindex, nofollow">
+<meta name="robots" content="index, follow">
 <title>Matthew Crews</title>
 
 <meta name="keywords" content="" />
 <meta name="description" content="">
 <meta name="author" content="">
 <link rel="canonical" href="https://matthewcrews.com/" />
-<link href="https://matthewcrews.com/assets/css/stylesheet.min.9c32bf1b6c17e9563e4245665c0c316248e00cb23813f6271d48d8b6ded04b74.css" integrity="" rel="preload stylesheet"
+<link href="/assets/css/stylesheet.min.d5d820de85dae34a78c22303e07aa685bb90ec25a056c702c0b1a964ca68861d.css" integrity="sha256-1dgg3oXa40p4wiMD4HqmhbuQ7CWgVscCwLGpZMpohh0=" rel="preload stylesheet"
     as="style">
 
 <link rel="icon" href="https://matthewcrews.com/favicon.ico">
@@ -25,6 +25,28 @@
 <link rel="alternate" type="application/rss&#43;xml" href="https://matthewcrews.com/index.xml">
 
 
+<meta property="og:title" content="Matthew Crews" />
+<meta property="og:description" content="" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://matthewcrews.com/" />
+<meta property="og:updated_time" content="2021-01-25T00:00:00+00:00" />
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="Matthew Crews"/>
+<meta name="twitter:description" content=""/>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Matthew Crews",
+  "url": "https://matthewcrews.com",
+  "description": "",
+  "thumbnailUrl": "https://matthewcrews.com/favicon.ico",
+  "sameAs": [
+      "https://twitter.com/McCrews", "https://github.com/matthewcrews", "https://matthewcrews.com/index.xml"
+  ]
+}
+</script>
 
 
 </head>
@@ -52,9 +74,9 @@
 <header class="header">
     <nav class="nav">
         <div class="logo">
-            <a href="https://matthewcrews.com" accesskey="h">Matthew Crews</a>
+            <a href="https://matthewcrews.com" accesskey="h" title="Matthew Crews (Alt + H)">Matthew Crews</a>
             <span class="logo-switches">
-                <span class="theme-toggle">
+                <span class="theme-toggle" title="(Alt + T)">
                     <a id="theme-toggle" accesskey="t">
                         <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
                             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -81,10 +103,8 @@
         </div>
         <ul class="menu" id="menu" onscroll="menu_on_scroll()">
             <li>
-                <a href="https://matthewcrews.com/about">
-                    <span>
-                        About
-                    </span>
+                <a href="https://matthewcrews.com/about" title="About">
+                    <span>About</span>
                 </a>
             </li></ul>
     </nav>
@@ -243,8 +263,8 @@ One of the most difficult parts of putting together algorithms has been making s
 </article>
 <footer class="page-footer">
   <nav class="pagination">
-    <a class="prev" href="/">« Prev Page</a>
-    <a class="next" href="/page/3/">Next Page »</a>
+    <a class="prev" href="https://matthewcrews.com/">« Prev Page</a>
+    <a class="next" href="https://matthewcrews.com/page/3/">Next Page »</a>
   </nav>
 </footer>
 
@@ -255,10 +275,11 @@ One of the most difficult parts of putting together algorithms has been making s
     <span>&middot;</span>
     <span>Theme <a href="https://git.io/hugopapermod" rel="noopener" target="_blank">PaperMod</a></span>
 </footer>
-<a href="#top" aria-label="go to top" title="Go to Top" accesskey="g">
-    <button class="top-link" id="top-link" type="button">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6">
-            <path d="M12 6H0l6-6z" /></svg>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)">
+    <button class="top-link" id="top-link" type="button" accesskey="g">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+            <path d="M12 6H0l6-6z" />
+        </svg>
     </button>
 </a>
 
@@ -274,9 +295,18 @@ One of the most difficult parts of putting together algorithms has been making s
         anchor.addEventListener("click", function (e) {
             e.preventDefault();
             var id = this.getAttribute("href").substr(1);
-            document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
-                behavior: "smooth"
-            });
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.replaceState(null, null, `#${id}`);
+            }
         });
     });
     var mybutton = document.getElementById("top-link");
@@ -317,7 +347,6 @@ One of the most difficult parts of putting together algorithms has been making s
 <script id="MathJax-script" async
   src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
 </script>
-
 </body>
 
 </html>
