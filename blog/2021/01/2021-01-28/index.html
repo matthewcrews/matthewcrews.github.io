@@ -151,7 +151,7 @@
   <div class="post-content">
 <p>In my previous <a href="/blog/2021/01/2021-01-25/">post</a> I introduced a scheduling problem where I needed to assign jobs to machines to achieve the maximum efficiency. We say efficiency is calculated as the number of times a machine must change the job-type it is working on. I want to continue exploring this problem by adding some nuance.</p>
 <blockquote>
-<p><strong>Note</strong>: Full code for this post can be found <a href="">here</a></p>
+<p><strong>Note</strong>: Full code for this post can be found <a href="https://github.com/matthewcrews/modelmondays/blob/main/2021-01-22-MachineAllocation/2021-01-28-MachineAllocationPercentConstraints.fsx">here</a></p>
 </blockquote>
 <h2 id="not-too-many-bad-jobs">Not Too Many Bad Jobs<a hidden class="anchor" aria-hidden="true" href="#not-too-many-bad-jobs">#</a></h2>
 <p>As my conversation continued with my friend regarding this problem a new constraint came up. It turns out there is a fourth job-type, let&rsquo;s call it job-type D, that can cause significant wear on a machine if it is run for too long. He wanted to add a constraint to the problem which would limit that amount of job-type D assigned to any given machine. In his case, he wanted a machine to have no more than 50% of the total work assigned to it to be of job-type D. Fortunately this is a relatively simple update to our model.</p>
