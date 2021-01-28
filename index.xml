@@ -5,7 +5,18 @@
     <link>https://matthewcrews.com/</link>
     <description>Recent content on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Mon, 25 Jan 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Thu, 28 Jan 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Scheduling Jobs for Maximum Efficiency - Part 2</title>
+      <link>https://matthewcrews.com/blog/2021/01/2021-01-28/</link>
+      <pubDate>Thu, 28 Jan 2021 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2021/01/2021-01-28/</guid>
+      <description>In my previous post I introduced a scheduling problem where I needed to assign jobs to machines to achieve the maximum efficiency. We say efficiency is calculated as the number of times a machine must change the job-type it is working on. I want to continue exploring this problem by adding some nuance.
+ Note: Full code for this post can be found here
+ Not Too Many Bad Jobs As my conversation continued with my friend regarding this problem a new constraint came up.</description>
+    </item>
+    
     <item>
       <title>Scheduling Jobs for Maximum Efficiency - Part 1</title>
       <link>https://matthewcrews.com/blog/2021/01/2021-01-25/</link>
