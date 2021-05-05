@@ -5,13 +5,22 @@
     <link>https://matthewcrews.com/</link>
     <description>Recent content on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Wed, 03 Feb 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 04 May 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Resources for Linear Programming</title>
+      <link>https://matthewcrews.com/blog/2021/05/2021-05-04/</link>
+      <pubDate>Tue, 04 May 2021 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2021/05/2021-05-04/</guid>
+      <description>I was recently asked about what resources I would recommend for Linear Programming. My response was, &amp;ldquo;Are you interested in problem formulation? Solution techniques? Algorithmic implementation?&amp;rdquo; The answer was, &amp;ldquo;Yes!&amp;rdquo; Here are the resources that I would recommend for those wanting to dive deep into Linear Programming (LP). Note, I will be focusing strictly on LP instead of Mixed-Integer Programming (MIP). MIP is a logical evolution of LP but brings in a whole host of other challenges.</description>
+    </item>
+    
     <item>
       <title>Scheduling Jobs for Maximum Efficiency - Part 3</title>
-      <link>https://matthewcrews.com/blog/2021/01/2021-02-04/</link>
+      <link>https://matthewcrews.com/blog/2021/02/2021-02-04/</link>
       <pubDate>Wed, 03 Feb 2021 00:00:00 +0000</pubDate>
       
-      <guid>https://matthewcrews.com/blog/2021/01/2021-02-04/</guid>
+      <guid>https://matthewcrews.com/blog/2021/02/2021-02-04/</guid>
       <description>I&amp;rsquo;ve continued to consult with my friend on the job assignments problem that I have been discussing in post 1 and post 2. At first, he was excited about what we had come up with but I knew there were likely more complexities that had not been uncovered yet. He went back to the client and came away with some new information. He told me, &amp;ldquo;Mathew, it turns out that machines have limited capacity.</description>
     </item>
     
