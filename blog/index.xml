@@ -5,7 +5,16 @@
     <link>https://matthewcrews.com/blog/</link>
     <description>Recent content in Blogs on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Tue, 04 May 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 16 Aug 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>SliceMap Rework - Part 1</title>
+      <link>https://matthewcrews.com/blog/2021/08/slicemap-rework-part-1/</link>
+      <pubDate>Mon, 16 Aug 2021 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2021/08/slicemap-rework-part-1/</guid>
+      <description>I have been on a journey to overhaul the underpinnings of the Flips library and it has been a humbling experience. Part of what I believe provides a unique value add compared to other libraries for Mathematical Planning is the SliceMap types. They provide a convenient method for subsetting your data that is intuitive for someone who writes optimization models. The SliceMap types are heavily influenced by the TupleDict type in the Gurobi library for Python.</description>
+    </item>
+    
     <item>
       <title>Resources for Linear Programming</title>
       <link>https://matthewcrews.com/blog/2021/05/2021-05-04/</link>
