@@ -5,7 +5,17 @@
     <link>https://matthewcrews.com/blog/</link>
     <description>Recent content in Blogs on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Mon, 16 Aug 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Mon, 23 Aug 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/blog/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>SliceMap Rework - Part 2</title>
+      <link>https://matthewcrews.com/blog/2021/08/slicemap-rework-part-2/</link>
+      <pubDate>Mon, 23 Aug 2021 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2021/08/slicemap-rework-part-2/</guid>
+      <description>Welcome to part 2 of this series. In the previous post we setup our problem which is to speed up the SliceMap family of types for sparse data. We created benchmarks and measured the performance of the current implementation. I gave a brief overview of a new approach I had come up with and showed how it failed miserably.
+We were in a depressing place at the end of the last post but hope burns eternal!</description>
+    </item>
+    
     <item>
       <title>SliceMap Rework - Part 1</title>
       <link>https://matthewcrews.com/blog/2021/08/slicemap-rework-part-1/</link>
