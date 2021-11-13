@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>Accelerating Dictionary Lookup with Records as Keys | Matthew Crews</title>
+
+<meta name="keywords" content="" />
+<meta name="description" content="NOTE: All the code cand be found here. Feel free to follow along!
+  Warning: This blog post involves native pointers and x86 assembly. This is intended for someone who absolutely needs their F# to go as fast as possible. This is not intended as a &ldquo;How you should write F#&rdquo; type of blog post. If you want clean, simple code you may want to turn around. If you are a speed junky, please continue 😀.">
+<meta name="author" content="">
+<link rel="canonical" href="https://matthewcrews.com/blog/2021/11/records-as-keys-for-dictionaries/" />
+<link href="/assets/css/stylesheet.min.d5d820de85dae34a78c22303e07aa685bb90ec25a056c702c0b1a964ca68861d.css" integrity="sha256-1dgg3oXa40p4wiMD4HqmhbuQ7CWgVscCwLGpZMpohh0=" rel="preload stylesheet"
+    as="style">
+
+<link rel="icon" href="https://matthewcrews.com/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://matthewcrews.com/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://matthewcrews.com/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://matthewcrews.com/apple-touch-icon.png">
+<link rel="mask-icon" href="https://matthewcrews.com/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<meta name="generator" content="Hugo 0.78.2" />
+
+
+<meta property="og:title" content="Accelerating Dictionary Lookup with Records as Keys" />
+<meta property="og:description" content="NOTE: All the code cand be found here. Feel free to follow along!
+  Warning: This blog post involves native pointers and x86 assembly. This is intended for someone who absolutely needs their F# to go as fast as possible. This is not intended as a &ldquo;How you should write F#&rdquo; type of blog post. If you want clean, simple code you may want to turn around. If you are a speed junky, please continue 😀." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://matthewcrews.com/blog/2021/11/records-as-keys-for-dictionaries/" />
+<meta property="article:published_time" content="2021-11-13T00:00:00+00:00" />
+<meta property="article:modified_time" content="2021-11-13T00:00:00+00:00" />
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="Accelerating Dictionary Lookup with Records as Keys"/>
+<meta name="twitter:description" content="NOTE: All the code cand be found here. Feel free to follow along!
+  Warning: This blog post involves native pointers and x86 assembly. This is intended for someone who absolutely needs their F# to go as fast as possible. This is not intended as a &ldquo;How you should write F#&rdquo; type of blog post. If you want clean, simple code you may want to turn around. If you are a speed junky, please continue 😀."/>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Accelerating Dictionary Lookup with Records as Keys",
+  "name": "Accelerating Dictionary Lookup with Records as Keys",
+  "description": "NOTE: All the code cand be found here. Feel free to follow along!\n  Warning: This blog post involves native pointers and x86 assembly. This is intended for someone who absolutely …",
+  "keywords": [
+    
+  ],
+  "articleBody": " NOTE: All the code cand be found here. Feel free to follow along!\n  Warning: This blog post involves native pointers and x86 assembly. This is intended for someone who absolutely needs their F# to go as fast as possible. This is not intended as a “How you should write F#” type of blog post. If you want clean, simple code you may want to turn around. If you are a speed junky, please continue 😀.\nAlso, I’m learning. Don’t take this as the advice of an expert but as the findings of someone on the journey.\n The Problem I ran into an interesting problem a week ago and I think others may find some value in it. I am currently working on writing a small Discrete-Event Simulation engine for a manufacturing facility. This problem required a bespoke solution since the current products that are available on the market are built with Modelers in mind and not deployment. In our ideal scenario this engine gets embedded in a decision-making product that is run by a Plant Manager.\nThe goal is to take a Discrete-Event model of the facility and then wrap it in an optimization loop to find the best possible schedule for the facility. For optimization to be effective, you need to be able to run the model as fast as possible. At each time step we need to evaluate how the processes in the facility are going to respond to the updated state. Let’s call this evaluation CalculateChange. The input for the CalculateChange is a type called Settings. Settings holds the parameters for the pieces of equipment in the facility. The result of calling CalculateChange will be a Changes type which holds the changes we will make to the model.\nIn our case, for a given Settings we will always get the same Changes back from CalculateChange. This means that CalculateChange is a natural candidate for memoization. The easiest way to memoize a function, that I am aware of, is to store results in a Dictionary and check to see if a result is already stored in it. A silly example of memoization is the following.\n// Create a Dictionary to hold our results let cache = Dictionary () let memoizedFunction (a: int) = match cache.TryFindValue a with | true, result - // Yay, the result for `a` was in our cache  result | false, _ - // Booooo! The result was not in our cache :/  // Now we have to call the expensive function  let result = reallyExpensiveFunctionToCall a // We store the result so that it will be in the cache next time  cache.[a]  result // Now return the result  result Here we are trying to keep from having to evaluate reallyExpensiveFunctionToCall each time by storing the result. Memoization can be a powerful way to speed up your programs. You are trading memory footprint for speed. This means this technique should only be used in an environment where you have plenty of memory available and what you really need is speed.\nThe Challenge This is where things take an interesting turn. Our Settings type is made up of a few arrays. Two of them are array and one of them is an array. BufferState is a Discriminated Union with 3 cases: Full, Partial, and Empty.\ntype BufferState = | Full | Partial | Empty type Settings = { Levels : arrayfloat MaxRates : arrayfloat Buffers : arrayBufferState } I am wanting to use the Settings type as a Key in a Dictionary. Now, some of you may already have alarms going off in your head. We are wanting to hash and check equality of something that has float in it. If you ask a question about this on StackOverflow, the first responses will typically be people telling you not to do that. I will echo their caution but add some context about when it is okay.\nEquality of any floating-point number is a notoriously difficult problem. Floating point math has rounding error built in which means that something that works mathematically may not work computationally. For example. Try putting this into an F# Interactive session and you will get false.\n// This will return FALSE 0.1 + 0.2 = 0.3 If you were taking a math class, the answer would be true, obviously. Using floating point math though 0.3 cannot be perfectly represented so what you get it when you put in 0.3 is\n0.299999999999999988897769753748434595763683319091796875\rLikewise, when you add 0.1 and 0.2 together you get\n0.3000000000000000444089209850062616169452667236328125000\rThose two numbers are very, very close but they are technically not the same. Okay, so I agree with the StackOverflow mob that testing equality of floats is fraught with danger. There are situations where it IS okay though. Those situations are when you are needing to compare float values that no math has been performed on. In my use case, the values in Settings are parameters that are being set on the condition of other parts of the facility. They are not the result of any computation. This means that I can realiably test their equality because no math has been performed on them.\n Note: I highly recommend reading the paper What Every Computer Scientist Should Know About Floating-Point Arithmetic by David Goldberg. It’s probably way more detail than you need at this time but if you are working with floating-point math it’s worth your time.\n What is nice is that F# is going to give us structural equality for free. This means using Settings as a key for a record should be no problem, right? Well, as with everything the answer is, “It depends…”. Earlier this year, Isaac Abraham wrote a great blog post for Compositional IT which went into the performance gains that can be had from writing custom equality and comparison in F#. I highly recommend you go read that article first before continuing.\nIn that article Isaac showed that there can be significant speed gains from implementing your own equality on a Record. In his tests the speed up for a Dictionary lookup was anywhere from 2 to 3 times faster. That has significant implications on the runtime of your algorithm if there is a Dictionary lookup in the heart of an inner loop. In my use case I want to lookup results in a Dictionary at every single time step of the simulation because a Dictionary lookup is still several orders of magnitude cheaper than running the expensive calculation logic.\nBefore we go doing anything though, let’s establish the baseline of our performance so we don’t flail around blindly. For this domain the values of Levels field can range from 0.0 to 100.0 and it can contain anywhere from 10 to 100 values. The values in MaxRates range from 0.0 to 10.0 and contain anywhere from 10 to 100 values. The values of the Buffers field are evenly distributed between the three possible states of BufferState and can be from 10 to 100 values. We’ll need to generate some data for us to test on.\nopen System // Parameters for generating test data let rng = Random (123) let maxLevelValue = 100.0 let maxRateValue = 100.0 // How many lookups we will perform in our test let lookupCount = 10_000 // Maximum length of the arrays let maxLevelsLength = 100 let maxRatesLength = 100 let maxBufferStateLength = 100 // How many arrays to generate let levelsCount = 1_000 let maxRatesCount = 1_000 let buffersCount = 1_000 // How many different random Settings to generate let randomSettingsCount = 1_000 // Function to create an array with random values let randomFloatArray (rng: Random) maxValue length = let result = Array.zeroCreate length for i = 0 to result.Length - 1 do result.[i]  maxValue * (rng.NextDouble ()) result // Function to create an array with random values let randomBufferStateArray (rng: Random) maxValue length = let result = Array.zeroCreate length for i = 0 to result.Length - 1 do // The `Next` method is generating values from 0 to 2  // The MaxValue arg used here is exclusive  match rng.Next 3 with | 0 - result.[i]  BufferState.Empty | 1 - result.[i]  BufferState.Full | 2 - result.[i]  BufferState.Partial | _ - failwith \"Really?\" result // Generate possible array to be used as the Levels field let levels = seq { for _ in 1 .. levelsCount - ((rng.Next maxLevelsLength) + 1) // Generate a random length  | randomFloatArray rng maxLevelValue } | Array.ofSeq // Generate possible array to be used as the MaxRates field let maxRates = seq { for _ in 1 .. maxRatesCount - ((rng.Next maxRatesLength) + 1) // Generate a random length  | randomFloatArray rng maxRateValue } | Array.ofSeq // Generate possible array to be used as the BufferStates field let bufferStates = seq { for _ in 1 .. bufferStatesCount - ((rng.Next maxRatesLength) + 1) | randomBufferStateArray rng } | Array.ofSeq Now we have some random data that we want to sample from to generate our random Settings type which we will use for lookup. The way we will do this is by creating a set of indices that we will use to lookup values for Levels, MaxRates, and BufferStates. The reason we want to do this is because we are going to create alternatives to the Settings type and we want to be sure those alternatives are populated with the same data. If it doesn’t make sense now, it will in a few minutes.\n// We want to make sure that all of our versions of the Settings type // have the same underlying data to hash and compare. This means we // need to compute the indices for the underlying data and use them // for all the versions of the Settings type we create. let valueIndexes = seq { for _ in 1 .. randomSettingsCount - {| LevelsIdx = rng.Next (0, levels.Length) MaxRatesIdx = rng.Next (0, maxRates.Length) BufferStatesIdx = rng.Next (0, buffers.Length) |} } | Array.ofSeq // We now generate the random Settings we will be using let settings = seq { for vi in valueIndexes - { Levels = levels.[vi.LevelsIdx] MaxRates = maxRates.[vi.MaxRatesIdx] Buffers = buffers.[vi.BufferStatesIdx] } } | Array.ofSeq Now let’s generate a set of indices which we will use to select the Settings values we will look up in our performance test. Again, we are generating the indices then creating another array which holds the Settings values we will look up so that we can use the indices to generate the exact same list when we create alternative Settings types.\n// These will be the indices for deciding which Settings values we // will look up in each of the dictionary. We want to ensure we are // looking up equivalent data in all the tests. let testIndexes = seq { for _ in 1 .. lookupCount - rng.Next (0, randomSettingsCount) } | Array.ofSeq // The values we will test looking up in a Dictionary let settingsKeys = testIndexes | Array.map (fun idx - settings.[idx]) Alright! We have our random Settings and we have the lookups we want to test. We’ll now put our random Settings values into a Dictionary to test looking up values.\n// Create the dictionary for looking up Settings let settingsDictionary = settings | Array.mapi (fun i settings - KeyValuePair (settings, i)) | Dictionary We can now create our test. We will be using benchmarkDotNet for our performance testing. BenchmarkDotNet has us create a class and annotate methods with the [] attribute so that the performance analyzer knows what code to test. Let’s open the necessary namespaces and write a test for our default Settings type.\nopen BenchmarkDotNet.Attributes open BenchmarkDotNet.Running // Type to contain our performance tests type Benchmarks () = [Benchmark] member _.Default () = let mutable idx = 0 let mutable result = 0 while idx  settingsKeys.Length do let testKey = settingsKeys.[idx] result  settingsDictionary.[testKey] idx  idx + 1 result We then build our project by opening a terminal in the directory that holds our .fsproj file and build the project with the Release configuration.\ndotnet build -c Release\rThis will create a release build of our code in the directory /bin/Release/net6.0. I open a terminal in this directory and run the .exe that was generated and get the following table as the result.\n   Method Mean Error StdDev     Default 36.73 ms 0.472 ms 0.442 ms    This means that it is taking us 36.73 ms on average to look up our Settings type in the Dictionary 1,000 times. We now have a performance baseline.\nSimple Override Let’s do the next, obvious thing and try defining a new version of Settings in a new module called Simple where we will use the easiest means of overriding the default equality behavior. I am going to put this new type and its data in a separate module to isolate it to prevent type collision headaches.\nmodule Simple = [CustomEquality; NoComparison] type Settings = { Levels : arrayfloat MaxRates : arrayfloat Buffers : arrayBufferState } override this.Equals b = match b with | :? Settings as other - this.Levels = other.Levels \u0026\u0026 this.MaxRates = other.MaxRates \u0026\u0026 this.Buffers = other.Buffers | _ - false override this.GetHashCode () = hash (this.Levels, this.MaxRates, this.Buffers) Nothing exotic going on here. We’ve added the attributes [] and []. [] is telling the F# compiler that we are going to provide our own overloads for Equals and GetHashCode. We have to also add [] because the compiler wants us to also define the necessary methods for performing comparisons. We aren’t testing that right now, so we are telling the compiler, “I don’t want to define comparison so just don’t allow me to compare it.” This is one of the downsides of overriding default behavior. Now that we’ve told the compiler we are defining equality, we have taken on more responsibility for how this type behaves.\nLet’s generate the necessary test data and update our Benchmark class with a new testing method. I just copy and paste the code that we used for the default Settings type into the module where we defined our new Settings with overrides.\nmodule Simple = // Type definition here...  // This is why we defined that array of indices before. So we could generate new Settings types  // that were populated with the same data.  // We now generate the random Settings which uses our custom overrides  let settings = seq { for vi in valueIndexes - { Levels = levels.[vi.LevelsIdx] MaxRates = maxRates.[vi.MaxRatesIdx] Buffers = buffers.[vi.BufferStatesIdx] } // Making sure we are getting the type we want  } | Array.ofSeq // The values we will test looking up in a Dictionary  let settings = testIndexes | Array.map (fun idx - settings.[idx]) // Create the dictionary for looking up Settings  let settingsDictionary = settings | Array.mapi (fun i settings - KeyValuePair (settings, i)) | Dictionary And now we add our test to the Benchmarks class. We also moved the default Settings into a module of its own so now we need to prefix the initial test with Default. Our Benchmark class will now look like this.\n// Type to contain our performance tests type Benchmarks () = [Benchmark] member _.Default () = let mutable idx = 0 let mutable result = 0 while idx  Default.settingsKeys.Length do let testKey = Default.settingsKeys.[idx] result  Default.settingsDictionary.[testKey] idx  idx + 1 result [Benchmark] member _.Simple () = let mutable idx = 0 let mutable result = 0 while idx  Simple.settingsKeys.Length do let testKey = Simple.settingsKeys.[idx] result  Simple.settingsDictionary.[testKey] idx  idx + 1 result We do another build and re-run our benchmarks. Upon completion we get these results.\n   Method Mean Error StdDev     Default 37.69 ms 0.428 ms 0.357 ms   Simple 37.82 ms 0.271 ms 0.241 ms    This is wildly disappointing. This had no affect which honestly, is probably a good thing. What we just implemented is essentially the default behavior of F# so we shouldn’t expect a big change. At this point though, I got curious as to how exactly is F# generating hash codes for array. I went digging into the F# source and found my way to the prim-types.fs file. One thing I notice in my sleuthing is that F# has some specialized functions for generating hashcodes for array, array, and array but I didn’t see any for array. Hmm, what if we created one and used that for generating our hashcodes?\nHashCode for array I decided to steal borrow the function that F# is using for combining hashcodes found here. I also copy and paste the specialized function for hashing array found here and change it up a little to work with array. I put this new functions into a new module FloatHash.\nmodule FloatHash = // Source: https://github.com/dotnet/fsharp/blob/dc81e22205550f0cedf4295b06c3a1e338c1cfa1/src/fsharp/FSharp.Core/prim-types.fs#L1625  let inline HashCombine nr x y = (x  1) + y + 631 * nr let HashFloatArray (x: arrayfloat) : int = let len = x.Length let mutable i = len - 1 let mutable acc = 0 while (i = 0) do acc  HashCombine i acc (int x.[i]) i  i - 1 acc Now we have the ingredients to make our own hashing function for our Settings type. Let’s define a new Settings using this new functionality.\nmodule FloatHash = // ...new functions here  [CustomEquality; NoComparison] type Settings = { Levels : arrayfloat MaxRates : arrayfloat Buffers : arrayBufferState } override this.Equals b = match b with | :? Settings as other - this.Levels = other.Levels \u0026\u0026 this.MaxRates = other.MaxRates \u0026\u0026 this.Buffers = other.Buffers | _ - false override this.GetHashCode () = // We now use our `hashFloatArray`  let levelsHash = HashFloatArray this.Levels let maxRatesHash = HashFloatArray this.MaxRates let buffersHash = this.Buffers.GetHashCode() hash (levelsHash, maxRatesHash, buffersHash) We again copy and paste the data generating code into this new module to create our test data with our new type. We then add a third method to our Benchmarks class to test this new approach.\ntype Benchmarks () = // Previous benchmarks are still here. I'm just not posting the code for brevity  [Benchmark] member _.FloatHash () = let mutable idx = 0 let mutable result = 0 while idx  FloatHash.settingsKeys.Length do let testKey = FloatHash.settingsKeys.[idx] result  FloatHash.settingsDictionary.[testKey] idx  idx + 1 result After we compile and run our benchmarks, we get the following.\n   Method Mean Error StdDev     Default 37.12 ms 0.648 ms 0.606 ms   Simple 36.84 ms 0.270 ms 0.253 ms   FloatHash 10.12 ms 0.093 ms 0.087 ms    Whoa! Now that’s interesting. We get a significant speed up when using a function that is specifically made for a array. Now we are making progress.\nFaster by Ignoring Now, if you are one of the few people who clicked the links to the F# source code, you may notice that the version of HashFloatArray I wrote isn’t quite like the version that is in the F# source code. The F# source code only hashes up to the first 18 values. It ignores the elements after that. I’m assuming the rationale is that the first 18 elements are sufficient for generating a unique enough hashcode. Let’s create a new module FloatHashSort where we define a new Settings type that uses this abbreviated hashing.\nmodule FloatHashShort = // To limit the number of elements we use for hashing  let defaultHashNodes = 18 let inline HashCombine nr x y = (x  1) + y + 631 * nr let HashFloatArray (x: arrayfloat) : int = let len = x.Length let mutable i = len - 1 if i  defaultHashNodes then i  defaultHashNodes // limit the hash  let mutable acc = 0 while (i = 0) do acc  HashCombine i acc (int x.[i]) i  i - 1 acc [CustomEquality; NoComparison] type Settings = { Levels : arrayfloat MaxRates : arrayfloat Buffers : arrayBufferState } override this.Equals b = match b with | :? Settings as other - this.Levels = other.Levels \u0026\u0026 this.MaxRates = other.MaxRates \u0026\u0026 this.Buffers = other.Buffers | _ - false override this.GetHashCode () = let levelsHash = HashFloatArray this.Levels let maxRatesHash = HashFloatArray this.MaxRates let buffersHash = this.Buffers.GetHashCode() hash (levelsHash, maxRatesHash, buffersHash) // There is also the data creation code here but I'm leaving it out because it's a repeat of  // what you have seen already. And we add a fourth benchmark to Benchmarks.\ntype Benchmarks () = // ...previous benchmarks here  [Benchmark] member _.FloatHashShort () = let mutable idx = 0 let mutable result = 0 while idx  FloatHashShort.settingsKeys.Length do let testKey = FloatHashShort.settingsKeys.[idx] result  FloatHashShort.settingsDictionary.[testKey] idx  idx + 1 result We recompile and run those benchmarks! Let’s see what we get.\n   Method Mean Error StdDev     Default 35.546 ms 0.5105 ms 0.3985 ms   Simple 38.245 ms 0.3848 ms 0.3600 ms   FloatHash 9.861 ms 0.0399 ms 0.0333 ms   FloatHashShort 9.459 ms 0.0965 ms 0.0903 ms    Alright! A little more progress. Nothing crazy but we’ll take everything we can get.\nFaster array Equality We made a little progress now on the GetHashCode side of our problem. Let’s look at the Equals now. We would like to speed this up. Right now, we are using the built in functionality of F# to evaluate the equality of the arrays. Let’s write our own to see if we get more performance.\nWe are going to write a function which is going to take two array and test whether all the values are the same. We will be using a while loop in this case. From my understanding, all loops get compiled down to while loops in IL. Using a while will get early termination and the most compact assembly that I am aware of. For more info on optimizing .NET I refer you to Federico Andres Lois (@federicolois) and Bartosz Adamczewski (@badamczewski01). We create a new module, FloatArrayEquals, to hold our new approach.\nmodule FloatArrayEquals = // ...our updated hashing code is still here. Not shown for brevity  // The function we will use to compare the values in two float arrays  let FloatArrayEquals (a: arrayfloat) (b: arrayfloat) = if a.Length  b.Length then invalidArg (nameof b) \"Cannot check equality on arrays of different lengths\" let mutable idx = 0 let mutable result = true // Use a while loop to create better assembly  while idx  a.Length \u0026\u0026 result do if a.[idx]  b.[idx] then result  false idx  idx + 1 result [CustomEquality; NoComparison] type Settings = { Levels : arrayfloat MaxRates : arrayfloat Buffers : arrayBufferState } override this.Equals b = match b with | :? Settings as other - // We are using our new function to compare the values  // in our array  (FloatArrayEquals this.Levels other.Levels) \u0026\u0026 (FloatArrayEquals this.MaxRates other.MaxRates) \u0026\u0026 this.Buffers = other.Buffers | _ - false override this.GetHashCode () = let levelsHash = HashFloatArray this.Levels let maxRatesHash = HashFloatArray this.MaxRates let buffersHash = this.Buffers.GetHashCode() hash (levelsHash, maxRatesHash, buffersHash) We add a new method to Benchmark…\ntype Benchmarks () = // Previous benchmarks are still here...  [Benchmark] member _.ArrayEquals () = let mutable idx = 0 let mutable result = 0 while idx  ArrayEquals.settingsKeys.Length do let testKey = ArrayEquals.settingsKeys.[idx] result  ArrayEquals.settingsDictionary.[testKey] idx  idx + 1 result Then compile and run our tests to get…\n   Method Mean Error StdDev     Default 37.085 ms 0.1836 ms 0.1627 ms   Simple 35.839 ms 0.2870 ms 0.2544 ms   FloatHash 10.189 ms 0.1942 ms 0.1907 ms   FloatHashShort 9.454 ms 0.1645 ms 0.1539 ms   ArrayEquals 7.100 ms 0.1289 ms 0.1324 ms    This is great! We are still making progress. Before F# had to figure out what method to call in order to evaluate equality. Here we can skip that and use a loop tuned for this exact problem.\nEnter the SIMD Now, I skipped something at the very beginning of this whole post. There was a version of my simulation code where the Settings type did not contain arrays. It was a more complex set of types. I’ve been on a journey to learn how to write faster code because speed is a huge differentiator in my field. I work in a .NET shop, but we still want to have fast simulations. During my wanderings I have found Data-Oriented Design and Entity Component Systems. These are broad topics, but they are really about arranging your data to achieve high performance.\nI have been building code with a more Entity Component style. I’m not building full Entity Component systems but I’m tending toward Structs of Arrays (SoA) instead of Arrays of Structs (AoS) as a way to organize data (AoS vs SoA). Settings is a type that has gone through that transformation. By arranging data in a way that is sympathetic to how computers work, we can achieve much better performance.\nOne of the tools that becomes available to you when you arrange your data in nice contiguous blocks of data is SIMD instructions. Practically all modern processors have special instructions which operate on multiple pieces of data simultaneously. This is exactly what we are doing with the equality checks in our Equals methods. For our first step into SIMD, let’s use some SSE2 instructions to test the equality of array. SSE2 allows us to operate on 128 bits at a time. This means we can test the equality of 2 float at the same time.\n Note: The Intrinsics libraries are designed as zero safeties type of library. It is incumbent on the developer to check whether the CPU actually has the required intrinsics available. Most modern x86 CPUs will have everything that I am showing. Best practice is to have code check as to whether the instructions are available and providing a fallback function if they are not. A fallback for us would simply be the code earlier in this post. Production code should contain checks and fallbacks. You have been warned.\n I am going to show you the function we will use for stepping through two arrays simultaneously and then break it down for you line by line. In this case I think it’s easier for you to see the whole picture first and then have me explain what is happening to you.\nmodule SseFloatArrayEquals = // Open some new namespace we will need  open FSharp.NativeInterop open System.Runtime.Intrinsics.X86 open System.Runtime.Intrinsics // Note, we are still using the same hashing functions. There just not shown for brevity  // This is the new function we will use for comparing values  let equals (a: arrayfloat) (b: arrayfloat) = if a.Length  b.Length then invalidArg (nameof b) \"Cannot check equality on arrays of different lengths\" let mutable result = true let mutable idx = 0 let lastBlockIdx = a.Length - (a.Length % Vector128float.Count) use aPointer = fixed a use bPointer = fixed b while idx  lastBlockIdx \u0026\u0026 result do let aVector = Sse2.LoadVector128 (NativePtr.add aPointer idx) let bVector = Sse2.LoadVector128 (NativePtr.add bPointer idx) let comparison = Sse2.CompareEqual (aVector, bVector) let mask = Sse2.MoveMask comparison result  (mask = 3) idx  idx + Vector128float.Count while idx  a.Length \u0026\u0026 result do if a.[idx]  b.[idx] then result  false idx  idx + 1 result Okay, let’s unpack what is happening in equals. In the first couple of lines, I’m making sure that the two arrays are the same length.\nif a.Length  b.Length then invalidArg (nameof b) \"Cannot check equality on arrays of different lengths\" Next I create some values I will be using to track my progress through the loop.\nlet mutable result = true let mutable idx = 0 I then need to calculate the last index at which I can use the SIMD instructions. Past this index I will need to fall back to scalar operations since I don’t have a big enough chunk of data to work on.\nlet lastBlockIdx = a.Length - (a.Length % Vector128float.Count) We now need to get a pointer to the arrays. The fixed keyword is used to pin down the array and give us a pointer. We don’t want the garbage collector moving data around while our function is running. This is what we use to tell the runtime to leave it alone until we are done with it. Instead of using let to bind the result, we use the use keyword. use tells the compiler that the resource should be collected once the value has gone out of scope. This is important since we don’t want memory to stay pinned forever.\nuse aPointer = fixed a use bPointer = fixed b Now let’s look at the loop where we are actually doing the work. The calls to Sse2.LoadVector128 are loading the data into the registers to be worked on in parallel. Sse2.CompareEqual tells the CPU to compare the values in aVector and bVector for equality. If the values are equal, then it will set the result to 1 values. If they are not, they are set to 0.\nlet aVector = Sse2.LoadVector128 (NativePtr.add aPointer idx) let bVector = Sse2.LoadVector128 (NativePtr.add bPointer idx) let comparison = Sse2.CompareEqual (aVector, bVector) Here’s what this operation would look like if we were working in 8-bit. I’m using 8-bit because I didn’t want to have to draw out 32 boxes for 32-bit but the concepts translate to whatever bit-ness you are using. Here is what the data looks like if Vector A had the values 6 and 23 loaded in.\nAnd let’s say we had the values 6 and 14 loaded into Vector B.\nWhen we perform the Sse1.CompareEqual method on these two vectors we will get 1’s where the slots match, and 0’s where they did not. Notice I said SLOT, not bit. You should think of it as the entire slot matching, not necessarily a number because this can be done with many different data types which have different widths.\nNow we need to check the result of the comparison. We do that by calling Sse2.MoveMask.\nlet mask = Sse2.MoveMask comparison result  (mask = 3) MoveMask is calling a MOVMSK hardware intrinsic which is kind of a magical operation that confused me to no end. The explanation of it in the Intel documentation didn’t help me much either. There are actually a lot of different MOVMSK intrinsics depending on the data you are working with. In our case it is working with a 64-bit float so it is calling MOVMSKPD. All MOVMSK operations take the highest order bit from each slot and put them in the lowest order bits in the output. This is effectively creating a Bitmask. A Bitmask can also be interpreted as an int.\nHere is an example of what MOVMSK is doing using my 8-bit example.\nIt moved the highest order bit from each slot into the lowest order bits on the output. This new mask gets interpreted as an int which has a value of 2.\nSo, in this code, if both values match the output mask would have 11 in the lowest order bits of a 32-bit int which would be equivalent to 3. That’s why the test for whether all the values match is mask = 3.\nOkay, we made it to the bottom of the loop. Now we just need to increment our index forward far enough to get a fresh set of values to load into our vectors. We want to increment by how many of our test elements fit into a Vector128 which is why we add Vector128.Count to the index.\nidx  idx + Vector128float.Count We will keep looping until we get through the elements, we can process using the vector operations. We then make it to the final loop which checks any remaining values that we need to process in a scalar way.\nwhile idx  a.Length \u0026\u0026 result do if a.[idx]  b.[idx] then result  false idx  idx + 1 Wow, that was a lot. Let’s now create a Settings type that uses these SSE2 instructions and see if we get a speed up.\nmodule SseFloatArrayEquals = [CustomEquality; NoComparison] type Settings = { Levels : arrayfloat MaxRates : arrayfloat Buffers : arrayBufferState } override this.Equals b = match b with | :? Settings as other - (equals this.Levels other.Levels) \u0026\u0026 (equals this.MaxRates other.MaxRates) \u0026\u0026 (equals this.Buffers other.Buffers) | _ - false override this.GetHashCode () = let levelsHash = HashFloatArray this.Levels let maxRatesHash = HashFloatArray this.MaxRates let buffersHash = this.Buffers.GetHashCode() hash (levelsHash, maxRatesHash, buffersHash) We then add our new benchmark…\ntype Benchmarks () = // Previous benchmarks still here  [Benchmark] member _.SseFloatArrayEquals () = let mutable idx = 0 let mutable result = 0 while idx  SseFloatArrayEquals.settingsKeys.Length do let testKey = SseFloatArrayEquals.settingsKeys.[idx] result  SseFloatArrayEquals.settingsDictionary.[testKey] idx  idx + 1 result …and compile and run. What do we get?\n   Method Mean Error StdDev Median     Default 39.472 ms 0.4295 ms 0.4018 ms 39.438 ms   Simple 39.010 ms 0.5248 ms 0.4909 ms 39.157 ms   FloatHash 10.989 ms 0.1300 ms 0.1216 ms 11.033 ms   FloatHashShort 9.554 ms 0.1898 ms 0.2400 ms 9.410 ms   ArrayEquals 7.286 ms 0.0442 ms 0.0392 ms 7.274 ms   SseFloatArrayEquals 6.453 ms 0.0864 ms 0.0808 ms 6.440 ms    Excellent. A little more progress but we’d still like to see if we can get some more.\nBytes all the way down There is a comparison that we haven’t looked at yet. It’s the equality of the Buffers field. You may remember that this field is an array. BufferState is a discriminated union and so far has been using the built in F# equality. Something important to note, the default DU is a reference type. This means that it is passed by reference and if you want to compare the equality of two different DUs, you’ll need to follow there references to get the underlying data.\nFortunately, F# has added the ability to make struct DUs with the [] keyword. This is great for high performance scenarios but there are downsides. I don’t have the space to go into it here but will refer you to Bartosz Sypytkowski’s excellent blog post here. It’s a great read and will provide you significant insight into how to get the most performance out of F#.\nSo why do I care about the fact that I can make the BufferState DU into a struct? Well, if I’m storing all the data in an array and that data is a struct, then everything I need to compare will be contiguous. Now of course there are no hardware intrinsics in an x86 CPU for comparing F# types, but there are intrinsics for comparing raw bytes. If I can get a pointer to the array and simply compare the bytes for equality I can accelerate the equality check of the Buffers field as well.\nLet’s get to work. We’ll need to define a new type BufferStateStruct which is exactly the same as a BufferState but with the [] attribute. We’ll put all this new code in a module called SseByteArrayEquals.\nmodule SseByteArrayEquals = [Struct] type BufferStateStruct = | Full | Partial | Empty Now we need to define a new equals function that can take two array and check their equality based on the bytes matching. Again, I’m going to throw the whole function at you and then break it down. It’s like what we went through in the previous section with some minor tweaks.\nmodule SseByteArrayEquals = let private equals'T when 'T : unmanaged (a: array'T) (b: array'T) = if a.Length  b.Length then invalidArg (nameof b) \"Cannot perform equals on arrays of different lengths\" let len = a.Length * sizeof'T / sizeofbyte let mutable result = true let mutable idx = 0 let lastBlockIdx = len - (len % Vector128byte.Count) use pointerA = fixed a use pointerB = fixed b let bytePointerA = pointerA | NativePtr.toNativeInt | NativePtr.ofNativeIntbyte let bytePointerB = pointerB | NativePtr.toNativeInt | NativePtr.ofNativeIntbyte while idx lastBlockIdx \u0026\u0026 result do let aVector = Sse2.LoadVector128 (NativePtr.add bytePointerA idx) let bVector = Sse2.LoadVector128 (NativePtr.add bytePointerB idx) let comparison = Sse2.CompareEqual (aVector, bVector) let mask = Sse2.MoveMask (comparison) result  (mask = 65535) idx  idx + Vector128byte.Count while idx  len \u0026\u0026 result do result  ((NativePtr.get bytePointerA idx) = (NativePtr.get bytePointerB idx)) idx  idx + 1 result Our function declarations have changed slightly. We now take an array but we added the restriction unmanaged. You can read more about type restrictions here but this restriction is necessary for us to be able to view the array as just a set of bytes.\nAt the beginning we have the same check to ensure that the arrays are the same length.\nif a.Length  b.Length then invalidArg (nameof b) \"Cannot perform equals on arrays of different lengths\" We then need to know how long our arrays are in terms of the number of bytes since we will be operating on them as just bytes.\nlet len = a.Length * sizeof'T / sizeofbyte We then create result to track what we have found, create an int to track our progress and calculate the index of the last block we will be able to process using vector operations.\nlet mutable result = true let mutable idx = 0 let lastBlockIdx = len - (len % Vector128byte.Count) We now get our pointers to pin the array down to prevent GC from moving things from underneath us.\nuse pointerA = fixed a use pointerB = fixed b What you can’t see here is that pointerA and pointerB are both of type nativeptr. That’s not what we want. We want a nativeptr. We use the functions in the FSharp.NativeInterop namespace to convert the pointer to a nativeptr.\nlet bytePointerA = pointerA | NativePtr.toNativeInt | NativePtr.ofNativeIntbyte let bytePointerB = pointerB | NativePtr.toNativeInt | NativePtr.ofNativeIntbyte The while loop for the vector operations is the same except for one difference. The mask value we check. Before we were comparing 2 floats at a time, so the possible mask values were 00, 01, 10, and 11. Now we are working in units of byte and we operate on 128 bits at a time. This means that when we call MoveMask we will generate a mask with potentially 16 1s in the least significant bits. If I type that out as bits it looks like this.\n00000000 00000000 11111111 11111111\rThat mask is getting interpreted as a 32-bit number which gives a value of 65535.\nwhile idx  lastBlockIdx \u0026\u0026 result do let aVector = Sse2.LoadVector128 (NativePtr.add bytePointerA idx) let bVector = Sse2.LoadVector128 (NativePtr.add bytePointerB idx) let comparison = Sse2.CompareEqual (aVector, bVector) let mask = Sse2.MoveMask (comparison) result  (mask = 65535) // This has changed since we are working in bytes.  idx  idx + Vector128byte.Count The rest of the code in the function is the same as before so I won’t go over it. Our Settings type can change though since our array and array can both use this new equals function.\n[CustomEquality; NoComparison] type Settings = { Levels : arrayfloat MaxRates : arrayfloat Buffers : arrayBufferStateStruct } override this.Equals b = match b with | :? Settings as other - // Notice that all of the arrays are using the same equals function  (equals this.Levels other.Levels) \u0026\u0026 (equals this.MaxRates other.MaxRates) \u0026\u0026 (equals this.Buffers other.Buffers) | _ - false override this.GetHashCode () = let levelsHash = HashFloatArray this.Levels let maxRatesHash = HashFloatArray this.MaxRates let buffersHash = this.Buffers.GetHashCode() hash (levelsHash, maxRatesHash, buffersHash) We add another benchmark…\ntype Benchmarks () = // ...previous benchmarks  [Benchmark] member _.SseByteArrayEquals () = let mutable idx = 0 let mutable result = 0 while idx  SseByteArrayEquals.settingsKeys.Length do let testKey = SseByteArrayEquals.settingsKeys.[idx] result  SseByteArrayEquals.settingsDictionary.[testKey] idx  idx + 1 result …compile and run our tests to get the following.\n   Method Mean Error StdDev     Default 38.424 ms 0.4668 ms 0.4138 ms   Simple 39.739 ms 0.4141 ms 0.3874 ms   FloatHash 10.290 ms 0.0969 ms 0.0859 ms   FloatHashShort 9.541 ms 0.1061 ms 0.0993 ms   ArrayEquals 7.469 ms 0.0763 ms 0.0713 ms   SseFloatArrayEquals 6.966 ms 0.0580 ms 0.0453 ms   SseByteArrayEquals 1.653 ms 0.0178 ms 0.0149 ms    This is great! We got another huge speed boost. Putting your data into vectors and using SIMD to rapidly process them can lead to some huge performance gains.\nWrap Up I hope you enjoyed this journey. I had a lot of fun figuring out just how fast I could make this lookup since it is at the heart of some of the most performance sensitive code I wrote. I still have a lot to learn and if you have feedback, I would love to hear it! You can check out the code here. You can run the benchmarks yourself and see what you find.\nFeel free to email me or send me a message on Twitter. I’m on the journey and always eager to learn more. z\n",
+  "wordCount" : "6761",
+  "inLanguage": "en",
+  "datePublished": "2021-11-13T00:00:00Z",
+  "dateModified": "2021-11-13T00:00:00Z",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://matthewcrews.com/blog/2021/11/records-as-keys-for-dictionaries/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Matthew Crews",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://matthewcrews.com/favicon.ico"
+    }
+  }
+}
+</script>
+
+
+
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+<noscript>
+    <style type="text/css">
+        .theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+</noscript>
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="https://matthewcrews.com" accesskey="h" title="Matthew Crews (Alt + H)">Matthew Crews</a>
+            <span class="logo-switches">
+                <span class="theme-toggle" title="(Alt + T)">
+                    <a id="theme-toggle" accesskey="t">
+                        <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                        <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                    </a>
+                </span>
+                
+            </span>
+        </div>
+        <ul class="menu" id="menu" onscroll="menu_on_scroll()">
+            <li>
+                <a href="https://matthewcrews.com/about" title="About">
+                    <span>About</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://matthewcrews.com/consulting" title="Consulting">
+                    <span>Consulting</span>
+                </a>
+            </li></ul>
+    </nav>
+</header>
+
+    <main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <h1 class="post-title">
+      Accelerating Dictionary Lookup with Records as Keys
+    </h1>
+    <div class="post-description">
+      
+    </div>
+    <div class="post-meta">November 13, 2021
+
+    </div>
+  </header> 
+
+  <div class="post-content">
+<blockquote>
+<p><strong>NOTE</strong>: All the code cand be found <a href="https://github.com/matthewcrews/RecordsAsKeysForDictionary">here</a>. Feel free to follow along!</p>
+</blockquote>
+<blockquote>
+<p><strong>Warning</strong>: This blog post involves native pointers and x86 assembly. This is intended for someone who absolutely needs their F# to go as fast as possible. This is not intended as a &ldquo;How you should write F#&rdquo; type of blog post. If you want clean, simple code you may want to turn around. If you are a speed junky, please continue 😀.</p>
+<p>Also, I&rsquo;m learning. Don&rsquo;t take this as the advice of an expert but as the findings of someone on the journey.</p>
+</blockquote>
+<h2 id="the-problem">The Problem<a hidden class="anchor" aria-hidden="true" href="#the-problem">#</a></h2>
+<p>I ran into an interesting problem a week ago and I think others may find some value in it. I am currently working on writing a small Discrete-Event Simulation engine for a manufacturing facility. This problem required a bespoke solution since the current products that are available on the market are built with Modelers in mind and not deployment. In our ideal scenario this engine gets embedded in a decision-making product that is run by a Plant Manager.</p>
+<p>The goal is to take a Discrete-Event model of the facility and then wrap it in an optimization loop to find the best possible schedule for the facility. For optimization to be effective, you need to be able to run the model as fast as possible. At each time step we need to evaluate how the processes in the facility are going to respond to the updated state. Let&rsquo;s call this evaluation <code>CalculateChange</code>. The input for the <code>CalculateChange</code> is a type called <code>Settings</code>. <code>Settings</code> holds the parameters for the pieces of equipment in the facility. The result of calling <code>CalculateChange</code> will be a <code>Changes</code> type which holds the changes we will make to the model.</p>
+<p>In our case, for a given <code>Settings</code> we will always get the same <code>Changes</code> back from <code>CalculateChange</code>. This means that <code>CalculateChange</code> is a natural candidate for <a href="https://en.wikipedia.org/wiki/Memoization">memoization</a>. The easiest way to memoize a function, that I am aware of, is to store results in a <code>Dictionary</code> and check to see if a result is already stored in it. A silly example of memoization is the following.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// Create a Dictionary to hold our results
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> cache <span style="color:#f92672">=</span> Dictionary ()
+
+<span style="color:#66d9ef">let</span> memoizedFunction <span style="color:#f92672">(</span>a<span style="color:#f92672">:</span> int<span style="color:#f92672">)</span> <span style="color:#f92672">=</span>
+
+    <span style="color:#66d9ef">match</span> cache<span style="color:#f92672">.</span>TryFindValue a <span style="color:#66d9ef">with</span>
+    <span style="color:#f92672">|</span> <span style="color:#66d9ef">true</span><span style="color:#f92672">,</span> result <span style="color:#f92672">-&gt;</span>
+        <span style="color:#75715e">// Yay, the result for `a` was in our cache
+</span><span style="color:#75715e"></span>        result
+    <span style="color:#f92672">|</span> <span style="color:#66d9ef">false</span><span style="color:#f92672">,</span> <span style="color:#f92672">_</span> <span style="color:#f92672">-&gt;</span>
+        <span style="color:#75715e">// Booooo! The result was not in our cache :/
+</span><span style="color:#75715e"></span>        <span style="color:#75715e">// Now we have to call the expensive function
+</span><span style="color:#75715e"></span>        <span style="color:#66d9ef">let</span> result <span style="color:#f92672">=</span> reallyExpensiveFunctionToCall a
+        <span style="color:#75715e">// We store the result so that it will be in the cache next time
+</span><span style="color:#75715e"></span>        cache<span style="color:#f92672">.[</span>a<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;-</span> result
+        <span style="color:#75715e">// Now return the result
+</span><span style="color:#75715e"></span>        result
+
+</code></pre></div><p>Here we are trying to keep from having to evaluate <code>reallyExpensiveFunctionToCall</code> each time by storing the result. Memoization can be a powerful way to speed up your programs. You are trading memory footprint for speed. This means this technique should only be used in an environment where you have plenty of memory available and what you really need is speed.</p>
+<h2 id="the-challenge">The Challenge<a hidden class="anchor" aria-hidden="true" href="#the-challenge">#</a></h2>
+<p>This is where things take an interesting turn. Our <code>Settings</code> type is made up of a few arrays. Two of them are <code>array&lt;float&gt;</code> and one of them is an <code>array&lt;BufferState&gt;</code>. <code>BufferState</code> is a <a href="https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/discriminated-unions">Discriminated Union</a> with 3 cases: <code>Full</code>, <code>Partial</code>, and <code>Empty</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">BufferState</span> <span style="color:#f92672">=</span>
+    <span style="color:#f92672">|</span> Full
+    <span style="color:#f92672">|</span> Partial
+    <span style="color:#f92672">|</span> Empty
+
+<span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Settings</span> <span style="color:#f92672">=</span>
+    <span style="color:#f92672">{</span>
+        Levels <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+        MaxRates <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+        Buffers <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span>BufferState<span style="color:#f92672">&gt;</span>
+    <span style="color:#f92672">}</span>
+</code></pre></div><p>I am wanting to use the <code>Settings</code> type as a Key in a Dictionary. Now, some of you may already have alarms going off in your head. We are wanting to hash and check equality of something that has <code>float</code> in it. If you ask a question about this on StackOverflow, the first responses will typically be people telling you not to do that. I will echo their caution but add some context about when it is okay.</p>
+<p>Equality of any floating-point number is a notoriously difficult problem. Floating point math has rounding error built in which means that something that works mathematically may not work computationally. For example. Try putting this into an F# Interactive session and you will get false.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// This will return FALSE
+</span><span style="color:#75715e"></span>0<span style="color:#f92672">.</span>1 <span style="color:#f92672">+</span> 0<span style="color:#f92672">.</span>2 <span style="color:#f92672">=</span> 0<span style="color:#f92672">.</span>3
+</code></pre></div><p>If you were taking a math class, the answer would be true, obviously. Using floating point math though <code>0.3</code> cannot be perfectly represented so what you get it when you put in <code>0.3</code> is</p>
+<pre><code>0.299999999999999988897769753748434595763683319091796875
+</code></pre><p>Likewise, when you add <code>0.1</code> and <code>0.2</code> together you get</p>
+<pre><code>0.3000000000000000444089209850062616169452667236328125000
+</code></pre><p>Those two numbers are very, very close but they are technically not the same. Okay, so I agree with the StackOverflow mob that testing equality of floats is fraught with danger. There are situations where it IS okay though. Those situations are when you are needing to compare <code>float</code> values that no math has been performed on. In my use case, the values in <code>Settings</code> are parameters that are being set on the condition of other parts of the facility. They are not the result of any computation. This means that I can realiably test their equality because no math has been performed on them.</p>
+<blockquote>
+<p><strong>Note</strong>: I highly recommend reading the paper <a href="https://www.itu.dk/~sestoft/bachelor/IEEE754_article.pdf">What Every Computer Scientist Should Know About Floating-Point Arithmetic</a> by David Goldberg. It&rsquo;s probably way more detail than you need at this time but if you are working with floating-point math it&rsquo;s worth your time.</p>
+</blockquote>
+<p>What is nice is that F# is going to give us structural equality for free. This means using <code>Settings</code> as a key for a record should be no problem, right? Well, as with everything the answer is, &ldquo;It depends&hellip;&rdquo;. Earlier this year, Isaac Abraham wrote a <a href="https://www.compositional-it.com/news-blog/custom-equality-and-comparison-in-f/">great blog post</a> for Compositional IT which went into the performance gains that can be had from writing custom equality and comparison in F#. I highly recommend you go read that article first before continuing.</p>
+<p>In that article Isaac showed that there can be significant speed gains from implementing your own equality on a Record. In his tests the speed up for a Dictionary lookup was anywhere from 2 to 3 times faster. That has significant implications on the runtime of your algorithm if there is a Dictionary lookup in the heart of an inner loop. In my use case I want to lookup results in a Dictionary at every single time step of the simulation because a Dictionary lookup is still several orders of magnitude cheaper than running the expensive calculation logic.</p>
+<p>Before we go doing anything though, let&rsquo;s establish the baseline of our performance so we don&rsquo;t flail around blindly. For this domain the values of <code>Levels</code> field can range from <code>0.0</code> to <code>100.0</code> and it can contain anywhere from 10 to 100 values. The values in <code>MaxRates</code> range from <code>0.0</code> to <code>10.0</code> and contain anywhere from 10 to 100 values. The values of the <code>Buffers</code> field are evenly distributed between the three possible states of <code>BufferState</code> and can be from 10 to 100 values. We&rsquo;ll need to generate some data for us to test on.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">open</span> System
+
+<span style="color:#75715e">// Parameters for generating test data
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> rng <span style="color:#f92672">=</span> Random <span style="color:#f92672">(</span>123<span style="color:#f92672">)</span>
+<span style="color:#66d9ef">let</span> maxLevelValue <span style="color:#f92672">=</span> 100<span style="color:#f92672">.</span>0
+<span style="color:#66d9ef">let</span> maxRateValue <span style="color:#f92672">=</span> 100<span style="color:#f92672">.</span>0
+<span style="color:#75715e">// How many lookups we will perform in our test
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> lookupCount <span style="color:#f92672">=</span> 10_000
+
+<span style="color:#75715e">// Maximum length of the arrays
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> maxLevelsLength <span style="color:#f92672">=</span> 100
+<span style="color:#66d9ef">let</span> maxRatesLength <span style="color:#f92672">=</span> 100
+<span style="color:#66d9ef">let</span> maxBufferStateLength <span style="color:#f92672">=</span> 100
+
+<span style="color:#75715e">// How many arrays to generate
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> levelsCount  <span style="color:#f92672">=</span> 1_000
+<span style="color:#66d9ef">let</span> maxRatesCount <span style="color:#f92672">=</span> 1_000
+<span style="color:#66d9ef">let</span> buffersCount <span style="color:#f92672">=</span> 1_000
+
+<span style="color:#75715e">// How many different random Settings to generate
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> randomSettingsCount <span style="color:#f92672">=</span> 1_000
+
+
+<span style="color:#75715e">// Function to create an array&lt;float&gt; with random values
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> randomFloatArray <span style="color:#f92672">(</span>rng<span style="color:#f92672">:</span> Random<span style="color:#f92672">)</span> maxValue length <span style="color:#f92672">=</span>
+    <span style="color:#66d9ef">let</span> result <span style="color:#f92672">=</span> Array.zeroCreate length
+
+    <span style="color:#66d9ef">for</span> i <span style="color:#f92672">=</span> 0 <span style="color:#66d9ef">to</span> result<span style="color:#f92672">.</span>Length <span style="color:#f92672">-</span> 1 <span style="color:#66d9ef">do</span>
+        result<span style="color:#f92672">.[</span>i<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;-</span> maxValue <span style="color:#f92672">*</span> <span style="color:#f92672">(</span>rng<span style="color:#f92672">.</span>NextDouble ()<span style="color:#f92672">)</span>
+
+    result
+
+
+<span style="color:#75715e">// Function to create an array&lt;BufferState&gt; with random values
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> randomBufferStateArray <span style="color:#f92672">(</span>rng<span style="color:#f92672">:</span> Random<span style="color:#f92672">)</span> maxValue length <span style="color:#f92672">=</span>
+    <span style="color:#66d9ef">let</span> result <span style="color:#f92672">=</span> Array.zeroCreate length
+
+    <span style="color:#66d9ef">for</span> i <span style="color:#f92672">=</span> 0 <span style="color:#66d9ef">to</span> result<span style="color:#f92672">.</span>Length <span style="color:#f92672">-</span> 1 <span style="color:#66d9ef">do</span>
+        <span style="color:#75715e">// The `Next` method is generating values from 0 to 2
+</span><span style="color:#75715e"></span>        <span style="color:#75715e">// The MaxValue arg used here is exclusive
+</span><span style="color:#75715e"></span>        <span style="color:#66d9ef">match</span> rng<span style="color:#f92672">.</span>Next 3 <span style="color:#66d9ef">with</span>
+        <span style="color:#f92672">|</span> 0 <span style="color:#f92672">-&gt;</span> result<span style="color:#f92672">.[</span>i<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;-</span> BufferState.Empty
+        <span style="color:#f92672">|</span> 1 <span style="color:#f92672">-&gt;</span> result<span style="color:#f92672">.[</span>i<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;-</span> BufferState.Full
+        <span style="color:#f92672">|</span> 2 <span style="color:#f92672">-&gt;</span> result<span style="color:#f92672">.[</span>i<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;-</span> BufferState.Partial
+        <span style="color:#f92672">|</span> <span style="color:#f92672">_</span> <span style="color:#f92672">-&gt;</span> failwith <span style="color:#e6db74">&#34;Really?&#34;</span>
+
+    result
+
+<span style="color:#75715e">// Generate possible array&lt;float&gt; to be used as the Levels field
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> levels <span style="color:#f92672">=</span>
+    seq <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> <span style="color:#f92672">_</span> <span style="color:#66d9ef">in</span> 1 <span style="color:#f92672">..</span> levelsCount <span style="color:#f92672">-&gt;</span>
+            <span style="color:#f92672">((</span>rng<span style="color:#f92672">.</span>Next maxLevelsLength<span style="color:#f92672">)</span> <span style="color:#f92672">+</span> 1<span style="color:#f92672">)</span> <span style="color:#75715e">// Generate a random length
+</span><span style="color:#75715e"></span>            <span style="color:#f92672">|&gt;</span> randomFloatArray rng maxLevelValue
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> Array.ofSeq
+
+<span style="color:#75715e">// Generate possible array&lt;float&gt; to be used as the MaxRates field
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> maxRates <span style="color:#f92672">=</span>
+    seq <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> <span style="color:#f92672">_</span> <span style="color:#66d9ef">in</span> 1 <span style="color:#f92672">..</span> maxRatesCount <span style="color:#f92672">-&gt;</span>
+            <span style="color:#f92672">((</span>rng<span style="color:#f92672">.</span>Next maxRatesLength<span style="color:#f92672">)</span> <span style="color:#f92672">+</span> 1<span style="color:#f92672">)</span> <span style="color:#75715e">// Generate a random length
+</span><span style="color:#75715e"></span>            <span style="color:#f92672">|&gt;</span> randomFloatArray rng maxRateValue
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> Array.ofSeq
+
+<span style="color:#75715e">// Generate possible array&lt;BufferState&gt; to be used as the BufferStates field
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> bufferStates <span style="color:#f92672">=</span>
+    seq <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> <span style="color:#f92672">_</span> <span style="color:#66d9ef">in</span> 1 <span style="color:#f92672">..</span> bufferStatesCount <span style="color:#f92672">-&gt;</span>
+            <span style="color:#f92672">((</span>rng<span style="color:#f92672">.</span>Next maxRatesLength<span style="color:#f92672">)</span> <span style="color:#f92672">+</span> 1<span style="color:#f92672">)</span>
+            <span style="color:#f92672">|&gt;</span> randomBufferStateArray rng
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> Array.ofSeq
+</code></pre></div><p>Now we have some random data that we want to sample from to generate our random <code>Settings</code> type which we will use for lookup. The way we will do this is by creating a set of indices that we will use to lookup values for <code>Levels</code>, <code>MaxRates</code>, and <code>BufferStates</code>. The reason we want to do this is because we are going to create alternatives to the <code>Settings</code> type and we want to be sure those alternatives are populated with the same data. If it doesn&rsquo;t make sense now, it will in a few minutes.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// We want to make sure that all of our versions of the Settings type
+</span><span style="color:#75715e">// have the same underlying data to hash and compare. This means we
+</span><span style="color:#75715e">// need to compute the indices for the underlying data and use them
+</span><span style="color:#75715e">// for all the versions of the Settings type we create.
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> valueIndexes <span style="color:#f92672">=</span>
+    seq <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> <span style="color:#f92672">_</span> <span style="color:#66d9ef">in</span> 1 <span style="color:#f92672">..</span> randomSettingsCount <span style="color:#f92672">-&gt;</span>
+        <span style="color:#f92672">{|</span>
+            LevelsIdx <span style="color:#f92672">=</span> rng<span style="color:#f92672">.</span>Next <span style="color:#f92672">(</span>0<span style="color:#f92672">,</span> levels<span style="color:#f92672">.</span>Length<span style="color:#f92672">)</span>
+            MaxRatesIdx <span style="color:#f92672">=</span> rng<span style="color:#f92672">.</span>Next <span style="color:#f92672">(</span>0<span style="color:#f92672">,</span> maxRates<span style="color:#f92672">.</span>Length<span style="color:#f92672">)</span>
+            BufferStatesIdx <span style="color:#f92672">=</span> rng<span style="color:#f92672">.</span>Next <span style="color:#f92672">(</span>0<span style="color:#f92672">,</span> buffers<span style="color:#f92672">.</span>Length<span style="color:#f92672">)</span>
+        <span style="color:#f92672">|}</span>
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> Array.ofSeq
+    
+<span style="color:#75715e">// We now generate the random Settings we will be using
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> settings <span style="color:#f92672">=</span>
+    seq <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> vi <span style="color:#66d9ef">in</span> valueIndexes <span style="color:#f92672">-&gt;</span>
+        <span style="color:#f92672">{</span>
+            Levels <span style="color:#f92672">=</span> levels<span style="color:#f92672">.[</span>vi<span style="color:#f92672">.</span>LevelsIdx<span style="color:#f92672">]</span>
+            MaxRates <span style="color:#f92672">=</span> maxRates<span style="color:#f92672">.[</span>vi<span style="color:#f92672">.</span>MaxRatesIdx<span style="color:#f92672">]</span>
+            Buffers <span style="color:#f92672">=</span> buffers<span style="color:#f92672">.[</span>vi<span style="color:#f92672">.</span>BufferStatesIdx<span style="color:#f92672">]</span>
+        <span style="color:#f92672">}</span>
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> Array.ofSeq
+</code></pre></div><p>Now let&rsquo;s generate a set of indices which we will use to select the <code>Settings</code> values we will look up in our performance test. Again, we are generating the indices then creating another array which holds the <code>Settings</code> values we will look up so that we can use the indices to generate the exact same list when we create alternative <code>Settings</code> types.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// These will be the indices for deciding which Settings values we
+</span><span style="color:#75715e">// will look up in each of the dictionary. We want to ensure we are
+</span><span style="color:#75715e">// looking up equivalent data in all the tests.
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> testIndexes <span style="color:#f92672">=</span>
+    seq <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> <span style="color:#f92672">_</span> <span style="color:#66d9ef">in</span> 1 <span style="color:#f92672">..</span> lookupCount <span style="color:#f92672">-&gt;</span>
+            rng<span style="color:#f92672">.</span>Next <span style="color:#f92672">(</span>0<span style="color:#f92672">,</span> randomSettingsCount<span style="color:#f92672">)</span>
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> Array.ofSeq
+
+<span style="color:#75715e">// The values we will test looking up in a Dictionary
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> settingsKeys <span style="color:#f92672">=</span>
+    testIndexes
+    <span style="color:#f92672">|&gt;</span> Array.map <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> idx <span style="color:#f92672">-&gt;</span> settings<span style="color:#f92672">.[</span>idx<span style="color:#f92672">])</span>
+</code></pre></div><p>Alright! We have our random <code>Settings</code> and we have the lookups we want to test. We&rsquo;ll now put our random <code>Settings</code> values into a <code>Dictionary&lt;Settings, int&gt;</code> to test looking up values.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// Create the dictionary for looking up Settings
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">let</span> settingsDictionary <span style="color:#f92672">=</span>
+    settings
+    <span style="color:#f92672">|&gt;</span> Array.mapi <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> i settings <span style="color:#f92672">-&gt;</span> KeyValuePair <span style="color:#f92672">(</span>settings<span style="color:#f92672">,</span> i<span style="color:#f92672">))</span>
+    <span style="color:#f92672">|&gt;</span> Dictionary
+</code></pre></div><p>We can now create our test. We will be using <a href="https://github.com/dotnet/BenchmarkDotNet">benchmarkDotNet</a> for our performance testing. BenchmarkDotNet has us create a class and annotate methods with the <code>[&lt;Benchmark&gt;]</code> attribute so that the performance analyzer knows what code to test. Let&rsquo;s open the necessary namespaces and write a test for our default <code>Settings</code> type.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">open</span> BenchmarkDotNet.Attributes
+<span style="color:#66d9ef">open</span> BenchmarkDotNet.Running
+
+<span style="color:#75715e">// Type to contain our performance tests
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Benchmarks</span> () <span style="color:#f92672">=</span>
+
+    <span style="color:#f92672">[&lt;</span>Benchmark<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">Default</span> () <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+        <span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> 0
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> settingsKeys<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">let</span> testKey <span style="color:#f92672">=</span> settingsKeys<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span>
+            result <span style="color:#f92672">&lt;-</span> settingsDictionary<span style="color:#f92672">.[</span>testKey<span style="color:#f92672">]</span>
+
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+
+        result
+</code></pre></div><p>We then build our project by opening a terminal in the directory that holds our <code>.fsproj</code> file and build the project with the <code>Release</code> configuration.</p>
+<pre><code class="language-terminal" data-lang="terminal">dotnet build -c Release
+</code></pre><p>This will create a release build of our code in the directory <code>&lt;Project Root&gt;/bin/Release/net6.0</code>. I open a terminal in this directory and run the <code>.exe</code> that was generated and get the following table as the result.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Mean</th>
+<th style="text-align:right">Error</th>
+<th style="text-align:right">StdDev</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Default</td>
+<td style="text-align:right">36.73 ms</td>
+<td style="text-align:right">0.472 ms</td>
+<td style="text-align:right">0.442 ms</td>
+</tr>
+</tbody>
+</table>
+<p>This means that it is taking us 36.73 ms on average to look up our <code>Settings</code> type in the Dictionary 1,000 times. We now have a performance baseline.</p>
+<h2 id="simple-override">Simple Override<a hidden class="anchor" aria-hidden="true" href="#simple-override">#</a></h2>
+<p>Let&rsquo;s do the next, obvious thing and try defining a new version of <code>Settings</code> in a new module called <code>Simple</code> where we will use the easiest means of overriding the default equality behavior. I am going to put this new type and its data in a separate module to isolate it to prevent type collision headaches.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">module</span> Simple <span style="color:#f92672">=</span>
+
+    <span style="color:#f92672">[&lt;</span>CustomEquality<span style="color:#f92672">;</span> NoComparison<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Settings</span> <span style="color:#f92672">=</span>
+        <span style="color:#f92672">{</span>
+            Levels <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            MaxRates <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            Buffers <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span>BufferState<span style="color:#f92672">&gt;</span>
+        <span style="color:#f92672">}</span>
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">Equals</span> b <span style="color:#f92672">=</span>
+            <span style="color:#66d9ef">match</span> b <span style="color:#66d9ef">with</span>
+            <span style="color:#f92672">|</span> <span style="color:#f92672">:?</span> Settings <span style="color:#66d9ef">as</span> other <span style="color:#f92672">-&gt;</span>
+                this<span style="color:#f92672">.</span>Levels <span style="color:#f92672">=</span> other<span style="color:#f92672">.</span>Levels
+                <span style="color:#f92672">&amp;&amp;</span> this<span style="color:#f92672">.</span>MaxRates <span style="color:#f92672">=</span> other<span style="color:#f92672">.</span>MaxRates
+                <span style="color:#f92672">&amp;&amp;</span> this<span style="color:#f92672">.</span>Buffers <span style="color:#f92672">=</span> other<span style="color:#f92672">.</span>Buffers
+            <span style="color:#f92672">|</span> <span style="color:#f92672">_</span> <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">false</span>
+            
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">GetHashCode</span> () <span style="color:#f92672">=</span>
+            hash <span style="color:#f92672">(</span>this<span style="color:#f92672">.</span>Levels<span style="color:#f92672">,</span> this<span style="color:#f92672">.</span>MaxRates<span style="color:#f92672">,</span> this<span style="color:#f92672">.</span>Buffers<span style="color:#f92672">)</span>
+</code></pre></div><p>Nothing exotic going on here. We&rsquo;ve added the attributes <code>[&lt;CustomEquality&gt;]</code> and <code>[&lt;NoComparison&gt;]</code>. <code>[&lt;CustomEquality&gt;]</code> is telling the F# compiler that we are going to provide our own overloads for <code>Equals</code> and <code>GetHashCode</code>. We have to also add <code>[&lt;NoComparison&gt;]</code> because the compiler wants us to also define the necessary methods for performing comparisons. We aren&rsquo;t testing that right now, so we are telling the compiler, &ldquo;I don&rsquo;t want to define comparison so just don&rsquo;t allow me to compare it.&rdquo; This is one of the downsides of overriding default behavior. Now that we&rsquo;ve told the compiler we are defining equality, we have taken on more responsibility for how this type behaves.</p>
+<p>Let&rsquo;s generate the necessary test data and update our <code>Benchmark</code> class with a new testing method. I just copy and paste the code that we used for the default <code>Settings</code> type into the module where we defined our new <code>Settings</code> with overrides.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">module</span> Simple <span style="color:#f92672">=</span>
+
+    <span style="color:#75715e">// Type definition here...
+</span><span style="color:#75715e"></span>
+    <span style="color:#75715e">// This is why we defined that array of indices before. So we could generate new Settings types
+</span><span style="color:#75715e"></span>    <span style="color:#75715e">// that were populated with the same data.
+</span><span style="color:#75715e"></span>    <span style="color:#75715e">// We now generate the random Settings which uses our custom overrides
+</span><span style="color:#75715e"></span>    <span style="color:#66d9ef">let</span> settings <span style="color:#f92672">=</span>
+        seq <span style="color:#f92672">{</span>
+            <span style="color:#66d9ef">for</span> vi <span style="color:#66d9ef">in</span> valueIndexes <span style="color:#f92672">-&gt;</span>
+            <span style="color:#f92672">{</span>
+                Levels <span style="color:#f92672">=</span> levels<span style="color:#f92672">.[</span>vi<span style="color:#f92672">.</span>LevelsIdx<span style="color:#f92672">]</span>
+                MaxRates <span style="color:#f92672">=</span> maxRates<span style="color:#f92672">.[</span>vi<span style="color:#f92672">.</span>MaxRatesIdx<span style="color:#f92672">]</span>
+                Buffers <span style="color:#f92672">=</span> buffers<span style="color:#f92672">.[</span>vi<span style="color:#f92672">.</span>BufferStatesIdx<span style="color:#f92672">]</span>
+            <span style="color:#f92672">}</span> <span style="color:#75715e">// Making sure we are getting the type we want
+</span><span style="color:#75715e"></span>        <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> Array.ofSeq
+    
+    <span style="color:#75715e">// The values we will test looking up in a Dictionary
+</span><span style="color:#75715e"></span>    <span style="color:#66d9ef">let</span> settings <span style="color:#f92672">=</span>
+        testIndexes
+        <span style="color:#f92672">|&gt;</span> Array.map <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> idx <span style="color:#f92672">-&gt;</span> settings<span style="color:#f92672">.[</span>idx<span style="color:#f92672">])</span>
+        
+    <span style="color:#75715e">// Create the dictionary for looking up Settings
+</span><span style="color:#75715e"></span>    <span style="color:#66d9ef">let</span> settingsDictionary <span style="color:#f92672">=</span>
+        settings
+        <span style="color:#f92672">|&gt;</span> Array.mapi <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> i settings <span style="color:#f92672">-&gt;</span> KeyValuePair <span style="color:#f92672">(</span>settings<span style="color:#f92672">,</span> i<span style="color:#f92672">))</span>
+        <span style="color:#f92672">|&gt;</span> Dictionary
+</code></pre></div><p>And now we add our test to the <code>Benchmarks</code> class. We also moved the default <code>Settings</code> into a module of its own so now we need to prefix the initial test with <code>Default</code>.  Our <code>Benchmark</code> class will now look like this.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#75715e">// Type to contain our performance tests
+</span><span style="color:#75715e"></span><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Benchmarks</span> () <span style="color:#f92672">=</span>
+
+    <span style="color:#f92672">[&lt;</span>Benchmark<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">Default</span> () <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+        <span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> 0
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> Default.settingsKeys<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">let</span> testKey <span style="color:#f92672">=</span> Default.settingsKeys<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span>
+            result <span style="color:#f92672">&lt;-</span> Default.settingsDictionary<span style="color:#f92672">.[</span>testKey<span style="color:#f92672">]</span>
+
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+
+        result
+        
+    <span style="color:#f92672">[&lt;</span>Benchmark<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">Simple</span> () <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+        <span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> 0
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> Simple.settingsKeys<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">let</span> testKey <span style="color:#f92672">=</span> Simple.settingsKeys<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span>
+            result <span style="color:#f92672">&lt;-</span> Simple.settingsDictionary<span style="color:#f92672">.[</span>testKey<span style="color:#f92672">]</span>
+
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+
+        result
+</code></pre></div><p>We do another build and re-run our benchmarks. Upon completion we get these results.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Mean</th>
+<th style="text-align:right">Error</th>
+<th style="text-align:right">StdDev</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Default</td>
+<td style="text-align:right">37.69 ms</td>
+<td style="text-align:right">0.428 ms</td>
+<td style="text-align:right">0.357 ms</td>
+</tr>
+<tr>
+<td>Simple</td>
+<td style="text-align:right">37.82 ms</td>
+<td style="text-align:right">0.271 ms</td>
+<td style="text-align:right">0.241 ms</td>
+</tr>
+</tbody>
+</table>
+<p>This is wildly disappointing. This had no affect which honestly, is probably a good thing. What we just implemented is essentially the default behavior of F# so we shouldn&rsquo;t expect a big change. At this point though, I got curious as to how exactly is F# generating hash codes for <code>array&lt;float&gt;</code>. I went digging into the F# source and found my way to the <a href="https://github.com/dotnet/fsharp/blob/main/src/fsharp/FSharp.Core/prim-types.fs">prim-types.fs</a> file. One thing I notice in my sleuthing is that F# has some specialized functions for generating hashcodes for <code>array&lt;int&gt;</code>, <code>array&lt;int64&gt;</code>, and <code>array&lt;byte&gt;</code> but I didn&rsquo;t see any for <code>array&lt;float&gt;</code>. Hmm, what if we created one and used that for generating our hashcodes?</p>
+<h2 id="hashcode-for-arrayfloat">HashCode for <code>array&lt;float&gt;</code><a hidden class="anchor" aria-hidden="true" href="#hashcode-for-arrayfloat">#</a></h2>
+<p>I decided to <del>steal</del> borrow the function that F# is using for combining hashcodes found <a href="https://github.com/dotnet/fsharp/blob/dc81e22205550f0cedf4295b06c3a1e338c1cfa1/src/fsharp/FSharp.Core/prim-types.fs#L1625">here</a>. I also copy and paste the specialized function for hashing <code>array&lt;int&gt;</code> found <a href="https://github.com/dotnet/fsharp/blob/dc81e22205550f0cedf4295b06c3a1e338c1cfa1/src/fsharp/FSharp.Core/prim-types.fs#L1650">here</a> and change it up a little to work with <code>array&lt;float&gt;</code>. I put this new functions into a new module <code>FloatHash</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">module</span> FloatHash <span style="color:#f92672">=</span>
+
+    <span style="color:#75715e">// Source: https://github.com/dotnet/fsharp/blob/dc81e22205550f0cedf4295b06c3a1e338c1cfa1/src/fsharp/FSharp.Core/prim-types.fs#L1625
+</span><span style="color:#75715e"></span>    <span style="color:#66d9ef">let</span> inline HashCombine nr x y <span style="color:#f92672">=</span> <span style="color:#f92672">(</span>x <span style="color:#f92672">&lt;&lt;&lt;</span> 1<span style="color:#f92672">)</span> <span style="color:#f92672">+</span> y <span style="color:#f92672">+</span> 631 <span style="color:#f92672">*</span> nr
+
+    <span style="color:#66d9ef">let</span> HashFloatArray <span style="color:#f92672">(</span>x<span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;)</span> <span style="color:#f92672">:</span> int <span style="color:#f92672">=</span>
+            <span style="color:#66d9ef">let</span> len <span style="color:#f92672">=</span> x<span style="color:#f92672">.</span>Length
+            <span style="color:#66d9ef">let</span> mutable i <span style="color:#f92672">=</span> len <span style="color:#f92672">-</span> 1 
+            <span style="color:#66d9ef">let</span> mutable acc <span style="color:#f92672">=</span> 0
+            <span style="color:#66d9ef">while</span> <span style="color:#f92672">(</span>i <span style="color:#f92672">&gt;=</span> 0<span style="color:#f92672">)</span> <span style="color:#66d9ef">do</span> 
+                acc <span style="color:#f92672">&lt;-</span> HashCombine i acc <span style="color:#f92672">(</span>int x<span style="color:#f92672">.[</span>i<span style="color:#f92672">])</span>
+                i <span style="color:#f92672">&lt;-</span> i <span style="color:#f92672">-</span> 1
+            acc
+</code></pre></div><p>Now we have the ingredients to make our own hashing function for our <code>Settings</code> type. Let&rsquo;s define a new <code>Settings</code> using this new functionality.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">module</span> FloatHash <span style="color:#f92672">=</span>
+          
+    <span style="color:#75715e">// ...new functions here
+</span><span style="color:#75715e"></span>
+    <span style="color:#f92672">[&lt;</span>CustomEquality<span style="color:#f92672">;</span> NoComparison<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Settings</span> <span style="color:#f92672">=</span>
+        <span style="color:#f92672">{</span>
+            Levels <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            MaxRates <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            Buffers <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span>BufferState<span style="color:#f92672">&gt;</span>
+        <span style="color:#f92672">}</span>
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">Equals</span> b <span style="color:#f92672">=</span>
+            <span style="color:#66d9ef">match</span> b <span style="color:#66d9ef">with</span>
+            <span style="color:#f92672">|</span> <span style="color:#f92672">:?</span> Settings <span style="color:#66d9ef">as</span> other <span style="color:#f92672">-&gt;</span>
+                this<span style="color:#f92672">.</span>Levels <span style="color:#f92672">=</span> other<span style="color:#f92672">.</span>Levels
+                <span style="color:#f92672">&amp;&amp;</span> this<span style="color:#f92672">.</span>MaxRates <span style="color:#f92672">=</span> other<span style="color:#f92672">.</span>MaxRates
+                <span style="color:#f92672">&amp;&amp;</span> this<span style="color:#f92672">.</span>Buffers <span style="color:#f92672">=</span> other<span style="color:#f92672">.</span>Buffers
+            <span style="color:#f92672">|</span> <span style="color:#f92672">_</span> <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">false</span>
+            
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">GetHashCode</span> () <span style="color:#f92672">=</span>
+            <span style="color:#75715e">// We now use our `hashFloatArray` 
+</span><span style="color:#75715e"></span>            <span style="color:#66d9ef">let</span> levelsHash <span style="color:#f92672">=</span> HashFloatArray this<span style="color:#f92672">.</span>Levels
+            <span style="color:#66d9ef">let</span> maxRatesHash <span style="color:#f92672">=</span> HashFloatArray this<span style="color:#f92672">.</span>MaxRates
+            <span style="color:#66d9ef">let</span> buffersHash <span style="color:#f92672">=</span> this<span style="color:#f92672">.</span>Buffers<span style="color:#f92672">.</span>GetHashCode()
+            hash <span style="color:#f92672">(</span>levelsHash<span style="color:#f92672">,</span> maxRatesHash<span style="color:#f92672">,</span> buffersHash<span style="color:#f92672">)</span>
+</code></pre></div><p>We again copy and paste the data generating code into this new module to create our test data with our new type. We then add a third method to our <code>Benchmarks</code> class to test this new approach.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Benchmarks</span> () <span style="color:#f92672">=</span>
+
+    <span style="color:#75715e">// Previous benchmarks are still here. I&#39;m just not posting the code for brevity
+</span><span style="color:#75715e"></span>
+    <span style="color:#f92672">[&lt;</span>Benchmark<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">FloatHash</span> () <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+        <span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> 0
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> FloatHash.settingsKeys<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">let</span> testKey <span style="color:#f92672">=</span> FloatHash.settingsKeys<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span>
+            result <span style="color:#f92672">&lt;-</span> FloatHash.settingsDictionary<span style="color:#f92672">.[</span>testKey<span style="color:#f92672">]</span>
+
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+
+        result
+</code></pre></div><p>After we compile and run our benchmarks, we get the following.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Mean</th>
+<th style="text-align:right">Error</th>
+<th style="text-align:right">StdDev</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Default</td>
+<td style="text-align:right">37.12 ms</td>
+<td style="text-align:right">0.648 ms</td>
+<td style="text-align:right">0.606 ms</td>
+</tr>
+<tr>
+<td>Simple</td>
+<td style="text-align:right">36.84 ms</td>
+<td style="text-align:right">0.270 ms</td>
+<td style="text-align:right">0.253 ms</td>
+</tr>
+<tr>
+<td>FloatHash</td>
+<td style="text-align:right">10.12 ms</td>
+<td style="text-align:right">0.093 ms</td>
+<td style="text-align:right">0.087 ms</td>
+</tr>
+</tbody>
+</table>
+<p>Whoa! Now that&rsquo;s interesting. We get a significant speed up when using a function that is specifically made for a <code>array&lt;float</code>&gt;. Now we are making progress.</p>
+<h2 id="faster-by-ignoring">Faster by Ignoring<a hidden class="anchor" aria-hidden="true" href="#faster-by-ignoring">#</a></h2>
+<p>Now, if you are one of the few people who clicked the links to the F# source code, you may notice that the version of <code>HashFloatArray</code> I wrote isn&rsquo;t quite like the version that is in the F# source code. The F# source code only hashes up to the first 18 values. It ignores the elements after that. I&rsquo;m assuming the rationale is that the first 18 elements are sufficient for generating a unique enough hashcode. Let&rsquo;s create a new module <code>FloatHashSort</code> where we define a new <code>Settings</code> type that uses this abbreviated hashing.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">module</span> FloatHashShort <span style="color:#f92672">=</span>
+    
+    <span style="color:#75715e">// To limit the number of elements we use for hashing
+</span><span style="color:#75715e"></span>    <span style="color:#66d9ef">let</span> defaultHashNodes <span style="color:#f92672">=</span> 18
+    <span style="color:#66d9ef">let</span> inline HashCombine nr x y <span style="color:#f92672">=</span> <span style="color:#f92672">(</span>x <span style="color:#f92672">&lt;&lt;&lt;</span> 1<span style="color:#f92672">)</span> <span style="color:#f92672">+</span> y <span style="color:#f92672">+</span> 631 <span style="color:#f92672">*</span> nr
+    
+    <span style="color:#66d9ef">let</span> HashFloatArray <span style="color:#f92672">(</span>x<span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;)</span> <span style="color:#f92672">:</span> int <span style="color:#f92672">=</span>
+          <span style="color:#66d9ef">let</span> len <span style="color:#f92672">=</span> x<span style="color:#f92672">.</span>Length
+          <span style="color:#66d9ef">let</span> mutable i <span style="color:#f92672">=</span> len <span style="color:#f92672">-</span> 1
+          <span style="color:#66d9ef">if</span> i <span style="color:#f92672">&gt;</span> defaultHashNodes <span style="color:#66d9ef">then</span> i <span style="color:#f92672">&lt;-</span> defaultHashNodes <span style="color:#75715e">// limit the hash
+</span><span style="color:#75715e"></span>          <span style="color:#66d9ef">let</span> mutable acc <span style="color:#f92672">=</span> 0
+          <span style="color:#66d9ef">while</span> <span style="color:#f92672">(</span>i <span style="color:#f92672">&gt;=</span> 0<span style="color:#f92672">)</span> <span style="color:#66d9ef">do</span> 
+              acc <span style="color:#f92672">&lt;-</span> HashCombine i acc <span style="color:#f92672">(</span>int x<span style="color:#f92672">.[</span>i<span style="color:#f92672">])</span>
+              i <span style="color:#f92672">&lt;-</span> i <span style="color:#f92672">-</span> 1
+          acc
+          
+    <span style="color:#f92672">[&lt;</span>CustomEquality<span style="color:#f92672">;</span> NoComparison<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Settings</span> <span style="color:#f92672">=</span>
+        <span style="color:#f92672">{</span>
+            Levels <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            MaxRates <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            Buffers <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span>BufferState<span style="color:#f92672">&gt;</span>
+        <span style="color:#f92672">}</span>
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">Equals</span> b <span style="color:#f92672">=</span>
+            <span style="color:#66d9ef">match</span> b <span style="color:#66d9ef">with</span>
+            <span style="color:#f92672">|</span> <span style="color:#f92672">:?</span> Settings <span style="color:#66d9ef">as</span> other <span style="color:#f92672">-&gt;</span>
+                this<span style="color:#f92672">.</span>Levels <span style="color:#f92672">=</span> other<span style="color:#f92672">.</span>Levels
+                <span style="color:#f92672">&amp;&amp;</span> this<span style="color:#f92672">.</span>MaxRates <span style="color:#f92672">=</span> other<span style="color:#f92672">.</span>MaxRates
+                <span style="color:#f92672">&amp;&amp;</span> this<span style="color:#f92672">.</span>Buffers <span style="color:#f92672">=</span> other<span style="color:#f92672">.</span>Buffers
+            <span style="color:#f92672">|</span> <span style="color:#f92672">_</span> <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">false</span>
+            
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">GetHashCode</span> () <span style="color:#f92672">=</span>
+            <span style="color:#66d9ef">let</span> levelsHash <span style="color:#f92672">=</span> HashFloatArray this<span style="color:#f92672">.</span>Levels
+            <span style="color:#66d9ef">let</span> maxRatesHash <span style="color:#f92672">=</span> HashFloatArray this<span style="color:#f92672">.</span>MaxRates
+            <span style="color:#66d9ef">let</span> buffersHash <span style="color:#f92672">=</span> this<span style="color:#f92672">.</span>Buffers<span style="color:#f92672">.</span>GetHashCode()
+            hash <span style="color:#f92672">(</span>levelsHash<span style="color:#f92672">,</span> maxRatesHash<span style="color:#f92672">,</span> buffersHash<span style="color:#f92672">)</span>
+
+    <span style="color:#75715e">// There is also the data creation code here but I&#39;m leaving it out because it&#39;s a repeat of
+</span><span style="color:#75715e"></span>    <span style="color:#75715e">// what you have seen already.
+</span></code></pre></div><p>And we add a fourth benchmark to <code>Benchmarks</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Benchmarks</span> () <span style="color:#f92672">=</span>
+
+    <span style="color:#75715e">// ...previous benchmarks here
+</span><span style="color:#75715e"></span>
+    <span style="color:#f92672">[&lt;</span>Benchmark<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">FloatHashShort</span> () <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+        <span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> 0
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> FloatHashShort.settingsKeys<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">let</span> testKey <span style="color:#f92672">=</span> FloatHashShort.settingsKeys<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span>
+            result <span style="color:#f92672">&lt;-</span> FloatHashShort.settingsDictionary<span style="color:#f92672">.[</span>testKey<span style="color:#f92672">]</span>
+
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+
+        result
+</code></pre></div><p>We recompile and run those benchmarks! Let&rsquo;s see what we get.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Mean</th>
+<th style="text-align:right">Error</th>
+<th style="text-align:right">StdDev</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Default</td>
+<td style="text-align:right">35.546 ms</td>
+<td style="text-align:right">0.5105 ms</td>
+<td style="text-align:right">0.3985 ms</td>
+</tr>
+<tr>
+<td>Simple</td>
+<td style="text-align:right">38.245 ms</td>
+<td style="text-align:right">0.3848 ms</td>
+<td style="text-align:right">0.3600 ms</td>
+</tr>
+<tr>
+<td>FloatHash</td>
+<td style="text-align:right">9.861 ms</td>
+<td style="text-align:right">0.0399 ms</td>
+<td style="text-align:right">0.0333 ms</td>
+</tr>
+<tr>
+<td>FloatHashShort</td>
+<td style="text-align:right">9.459 ms</td>
+<td style="text-align:right">0.0965 ms</td>
+<td style="text-align:right">0.0903 ms</td>
+</tr>
+</tbody>
+</table>
+<p>Alright! A little more progress. Nothing crazy but we&rsquo;ll take everything we can get.</p>
+<h2 id="faster-arrayfloat-equality">Faster <code>array&lt;float&gt;</code> Equality<a hidden class="anchor" aria-hidden="true" href="#faster-arrayfloat-equality">#</a></h2>
+<p>We made a little progress now on the <code>GetHashCode</code> side of our problem. Let&rsquo;s look at the Equals now. We would like to speed this up. Right now, we are using the built in functionality of F# to evaluate the equality of the arrays. Let&rsquo;s write our own to see if we get more performance.</p>
+<p>We are going to write a function which is going to take two <code>array&lt;float&gt;</code> and test whether all the values are the same. We will be using a <code>while</code> loop in this case. From my understanding, all loops get compiled down to <code>while</code> loops in IL. Using a <code>while</code> will get early termination and the most compact assembly that I am aware of. For more info on optimizing .NET I refer you to Federico Andres Lois (@federicolois) and Bartosz Adamczewski (@badamczewski01). We create a new module, <code>FloatArrayEquals</code>, to hold our new approach.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">module</span> FloatArrayEquals <span style="color:#f92672">=</span>
+
+    <span style="color:#75715e">// ...our updated hashing code is still here. Not shown for brevity
+</span><span style="color:#75715e"></span>
+    <span style="color:#75715e">// The function we will use to compare the values in two float arrays
+</span><span style="color:#75715e"></span>    <span style="color:#66d9ef">let</span> FloatArrayEquals <span style="color:#f92672">(</span>a<span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;)</span> <span style="color:#f92672">(</span>b<span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;)</span> <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">if</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">&lt;&gt;</span> b<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">then</span>
+            invalidArg <span style="color:#f92672">(</span>nameof b<span style="color:#f92672">)</span> <span style="color:#e6db74">&#34;Cannot check equality on arrays of different lengths&#34;</span>
+            
+        <span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+        <span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> <span style="color:#66d9ef">true</span>
+        
+        <span style="color:#75715e">// Use a while loop to create better assembly
+</span><span style="color:#75715e"></span>        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">&amp;&amp;</span> result <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">if</span> a<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;&gt;</span> b<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span> <span style="color:#66d9ef">then</span>
+                result <span style="color:#f92672">&lt;-</span> <span style="color:#66d9ef">false</span>
+                
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+            
+        result
+
+    <span style="color:#f92672">[&lt;</span>CustomEquality<span style="color:#f92672">;</span> NoComparison<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Settings</span> <span style="color:#f92672">=</span>
+        <span style="color:#f92672">{</span>
+            Levels <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            MaxRates <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            Buffers <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span>BufferState<span style="color:#f92672">&gt;</span>
+        <span style="color:#f92672">}</span>
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">Equals</span> b <span style="color:#f92672">=</span>
+            <span style="color:#66d9ef">match</span> b <span style="color:#66d9ef">with</span>
+            <span style="color:#f92672">|</span> <span style="color:#f92672">:?</span> Settings <span style="color:#66d9ef">as</span> other <span style="color:#f92672">-&gt;</span>
+                <span style="color:#75715e">// We are using our new function to compare the values
+</span><span style="color:#75715e"></span>                <span style="color:#75715e">// in our array&lt;float&gt;
+</span><span style="color:#75715e"></span>                <span style="color:#f92672">(</span>FloatArrayEquals this<span style="color:#f92672">.</span>Levels other<span style="color:#f92672">.</span>Levels<span style="color:#f92672">)</span>
+                <span style="color:#f92672">&amp;&amp;</span> <span style="color:#f92672">(</span>FloatArrayEquals this<span style="color:#f92672">.</span>MaxRates other<span style="color:#f92672">.</span>MaxRates<span style="color:#f92672">)</span>
+                <span style="color:#f92672">&amp;&amp;</span> this<span style="color:#f92672">.</span>Buffers <span style="color:#f92672">=</span> other<span style="color:#f92672">.</span>Buffers
+            <span style="color:#f92672">|</span> <span style="color:#f92672">_</span> <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">false</span>
+            
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">GetHashCode</span> () <span style="color:#f92672">=</span>
+            <span style="color:#66d9ef">let</span> levelsHash <span style="color:#f92672">=</span> HashFloatArray this<span style="color:#f92672">.</span>Levels
+            <span style="color:#66d9ef">let</span> maxRatesHash <span style="color:#f92672">=</span> HashFloatArray this<span style="color:#f92672">.</span>MaxRates
+            <span style="color:#66d9ef">let</span> buffersHash <span style="color:#f92672">=</span> this<span style="color:#f92672">.</span>Buffers<span style="color:#f92672">.</span>GetHashCode()
+            hash <span style="color:#f92672">(</span>levelsHash<span style="color:#f92672">,</span> maxRatesHash<span style="color:#f92672">,</span> buffersHash<span style="color:#f92672">)</span>
+</code></pre></div><p>We add a new method to <code>Benchmark</code>&hellip;</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Benchmarks</span> () <span style="color:#f92672">=</span>
+    <span style="color:#75715e">// Previous benchmarks are still here...
+</span><span style="color:#75715e"></span>        
+    <span style="color:#f92672">[&lt;</span>Benchmark<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">ArrayEquals</span> () <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+        <span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> 0
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> ArrayEquals.settingsKeys<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">let</span> testKey <span style="color:#f92672">=</span> ArrayEquals.settingsKeys<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span>
+            result <span style="color:#f92672">&lt;-</span> ArrayEquals.settingsDictionary<span style="color:#f92672">.[</span>testKey<span style="color:#f92672">]</span>
+
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+
+        result
+</code></pre></div><p>Then compile and run our tests to get&hellip;</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Mean</th>
+<th style="text-align:right">Error</th>
+<th style="text-align:right">StdDev</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Default</td>
+<td style="text-align:right">37.085 ms</td>
+<td style="text-align:right">0.1836 ms</td>
+<td style="text-align:right">0.1627 ms</td>
+</tr>
+<tr>
+<td>Simple</td>
+<td style="text-align:right">35.839 ms</td>
+<td style="text-align:right">0.2870 ms</td>
+<td style="text-align:right">0.2544 ms</td>
+</tr>
+<tr>
+<td>FloatHash</td>
+<td style="text-align:right">10.189 ms</td>
+<td style="text-align:right">0.1942 ms</td>
+<td style="text-align:right">0.1907 ms</td>
+</tr>
+<tr>
+<td>FloatHashShort</td>
+<td style="text-align:right">9.454 ms</td>
+<td style="text-align:right">0.1645 ms</td>
+<td style="text-align:right">0.1539 ms</td>
+</tr>
+<tr>
+<td>ArrayEquals</td>
+<td style="text-align:right">7.100 ms</td>
+<td style="text-align:right">0.1289 ms</td>
+<td style="text-align:right">0.1324 ms</td>
+</tr>
+</tbody>
+</table>
+<p>This is great! We are still making progress. Before F# had to figure out what method to call in order to evaluate equality. Here we can skip that and use a loop tuned for this exact problem.</p>
+<h2 id="enter-the-simd">Enter the SIMD<a hidden class="anchor" aria-hidden="true" href="#enter-the-simd">#</a></h2>
+<p>Now, I skipped something at the very beginning of this whole post. There was a version of my simulation code where the <code>Settings</code> type did not contain arrays. It was a more complex set of types. I&rsquo;ve been on a journey to learn how to write faster code because speed is a huge differentiator in my field. I work in a .NET shop, but we still want to have fast simulations. During my wanderings I have found <a href="https://en.wikipedia.org/wiki/Data-oriented_design">Data-Oriented Design</a> and <a href="https://en.wikipedia.org/wiki/Entity_component_system">Entity Component Systems</a>. These are broad topics, but they are really about arranging your data to achieve high performance.</p>
+<p>I have been building code with a more Entity Component style. I&rsquo;m not building full Entity Component systems but I&rsquo;m tending toward Structs of Arrays (SoA) instead of Arrays of Structs (AoS) as a way to organize data (<a href="https://en.wikipedia.org/wiki/AoS_and_SoA">AoS vs SoA</a>). <code>Settings</code> is a type that has gone through that transformation. By arranging data in a way that is sympathetic to how computers work, we can achieve much better performance.</p>
+<p>One of the tools that becomes available to you when you arrange your data in nice contiguous blocks of data is <a href="https://en.wikipedia.org/wiki/SIMD">SIMD instructions</a>. Practically all modern processors have special instructions which operate on multiple pieces of data simultaneously. This is exactly what we are doing with the equality checks in our <code>Equals</code> methods. For our first step into SIMD, let&rsquo;s use some <a href="https://en.wikipedia.org/wiki/SSE2">SSE2</a> instructions to test the equality of <code>array&lt;float&gt;</code>. SSE2 allows us to operate on 128 bits at a time. This means we can test the equality of 2 <code>float</code> at the same time.</p>
+<blockquote>
+<p><strong>Note</strong>: The Intrinsics libraries are designed as zero safeties type of library. It is incumbent on the developer to check whether the CPU actually has the required intrinsics available. Most modern x86 CPUs will have everything that I am showing. Best practice is to have code check as to whether the instructions are available and providing a fallback function if they are not. A fallback for us would simply be the code earlier in this post. Production code should contain checks and fallbacks. You have been warned.</p>
+</blockquote>
+<p>I am going to show you the function we will use for stepping through two arrays simultaneously and then break it down for you line by line. In this case I think it&rsquo;s easier for you to see the whole picture first and then have me explain what is happening to you.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">module</span> SseFloatArrayEquals <span style="color:#f92672">=</span>
+
+    <span style="color:#75715e">// Open some new namespace we will need
+</span><span style="color:#75715e"></span>    <span style="color:#66d9ef">open</span> FSharp.NativeInterop
+    <span style="color:#66d9ef">open</span> System.Runtime.Intrinsics.X86
+    <span style="color:#66d9ef">open</span> System.Runtime.Intrinsics
+
+    <span style="color:#75715e">// Note, we are still using the same hashing functions. There just not shown for brevity
+</span><span style="color:#75715e"></span>
+    <span style="color:#75715e">// This is the new function we will use for comparing values
+</span><span style="color:#75715e"></span>    <span style="color:#66d9ef">let</span> equals <span style="color:#f92672">(</span>a<span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;)</span> <span style="color:#f92672">(</span>b<span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;)</span> <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">if</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">&lt;&gt;</span> b<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">then</span>
+            invalidArg <span style="color:#f92672">(</span>nameof b<span style="color:#f92672">)</span> <span style="color:#e6db74">&#34;Cannot check equality on arrays of different lengths&#34;</span>
+        
+        <span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> <span style="color:#66d9ef">true</span>
+        <span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+        <span style="color:#66d9ef">let</span> lastBlockIdx <span style="color:#f92672">=</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">-</span> <span style="color:#f92672">(</span>a<span style="color:#f92672">.</span>Length <span style="color:#f92672">%</span> Vector128<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;.</span>Count<span style="color:#f92672">)</span>
+        <span style="color:#66d9ef">use</span> aPointer <span style="color:#f92672">=</span> <span style="color:#66d9ef">fixed</span> a
+        <span style="color:#66d9ef">use</span> bPointer <span style="color:#f92672">=</span> <span style="color:#66d9ef">fixed</span> b
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> lastBlockIdx <span style="color:#f92672">&amp;&amp;</span> result <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">let</span> aVector <span style="color:#f92672">=</span> Sse2.LoadVector128 <span style="color:#f92672">(</span>NativePtr.add aPointer idx<span style="color:#f92672">)</span>
+            <span style="color:#66d9ef">let</span> bVector <span style="color:#f92672">=</span> Sse2.LoadVector128 <span style="color:#f92672">(</span>NativePtr.add bPointer idx<span style="color:#f92672">)</span>
+            <span style="color:#66d9ef">let</span> comparison <span style="color:#f92672">=</span> Sse2.CompareEqual <span style="color:#f92672">(</span>aVector<span style="color:#f92672">,</span> bVector<span style="color:#f92672">)</span>
+            <span style="color:#66d9ef">let</span> mask <span style="color:#f92672">=</span> Sse2.MoveMask comparison
+            result <span style="color:#f92672">&lt;-</span> <span style="color:#f92672">(</span>mask <span style="color:#f92672">=</span> 3<span style="color:#f92672">)</span>
+
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> Vector128<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;.</span>Count
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">&amp;&amp;</span> result <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">if</span> a<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;&gt;</span> b<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span> <span style="color:#66d9ef">then</span>
+                result <span style="color:#f92672">&lt;-</span> <span style="color:#66d9ef">false</span>
+
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+
+        result
+</code></pre></div><p>Okay, let&rsquo;s unpack what is happening in <code>equals</code>. In the first couple of lines, I&rsquo;m making sure that the two arrays are the same length.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">if</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">&lt;&gt;</span> b<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">then</span>
+    invalidArg <span style="color:#f92672">(</span>nameof b<span style="color:#f92672">)</span> <span style="color:#e6db74">&#34;Cannot check equality on arrays of different lengths&#34;</span>
+</code></pre></div><p>Next I create some values I will be using to track my progress through the loop.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> <span style="color:#66d9ef">true</span>
+<span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+</code></pre></div><p>I then need to calculate the last index at which I can use the SIMD instructions. Past this index I will need to fall back to scalar operations since I don&rsquo;t have a big enough chunk of data to work on.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> lastBlockIdx <span style="color:#f92672">=</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">-</span> <span style="color:#f92672">(</span>a<span style="color:#f92672">.</span>Length <span style="color:#f92672">%</span> Vector128<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;.</span>Count<span style="color:#f92672">)</span>
+</code></pre></div><p>We now need to get a pointer to the arrays. The <a href="https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/fixed"><code>fixed</code></a> keyword is used to pin down the array and give us a pointer. We don&rsquo;t want the garbage collector moving data around while our function is running. This is what we use to tell the runtime to leave it alone until we are done with it. Instead of using <code>let</code> to bind the result, we use the <a href="https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/resource-management-the-use-keyword"><code>use</code></a> keyword. <code>use</code> tells the compiler that the resource should be collected once the value has gone out of scope. This is important since we don&rsquo;t want memory to stay pinned forever.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">use</span> aPointer <span style="color:#f92672">=</span> <span style="color:#66d9ef">fixed</span> a
+<span style="color:#66d9ef">use</span> bPointer <span style="color:#f92672">=</span> <span style="color:#66d9ef">fixed</span> b
+</code></pre></div><p>Now let&rsquo;s look at the loop where we are actually doing the work. The calls to <code>Sse2.LoadVector128</code> are loading the data into the registers to be worked on in parallel. <code>Sse2.CompareEqual</code> tells the CPU to compare the values in <code>aVector</code> and <code>bVector</code> for equality. If the values are equal, then it will set the result to 1 values. If they are not, they are set to 0.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> aVector <span style="color:#f92672">=</span> Sse2.LoadVector128 <span style="color:#f92672">(</span>NativePtr.add aPointer idx<span style="color:#f92672">)</span>
+<span style="color:#66d9ef">let</span> bVector <span style="color:#f92672">=</span> Sse2.LoadVector128 <span style="color:#f92672">(</span>NativePtr.add bPointer idx<span style="color:#f92672">)</span>
+<span style="color:#66d9ef">let</span> comparison <span style="color:#f92672">=</span> Sse2.CompareEqual <span style="color:#f92672">(</span>aVector<span style="color:#f92672">,</span> bVector<span style="color:#f92672">)</span>
+</code></pre></div><p>Here&rsquo;s what this operation would look like if we were working in 8-bit. I&rsquo;m using 8-bit because I didn&rsquo;t want to have to draw out 32 boxes for 32-bit but the concepts translate to whatever bit-ness you are using. Here is what the data looks like if Vector A had the values 6 and 23 loaded in.</p>
+<p><img src="vector_a_values.png" alt="Vector A Values"></p>
+<p>And let&rsquo;s say we had the values 6 and 14 loaded into Vector B.</p>
+<p><img src="vector_b_values.png" alt="Vector B Values"></p>
+<p>When we perform the <code>Sse1.CompareEqual</code> method on these two vectors we will get 1&rsquo;s where the slots match, and 0&rsquo;s where they did not. Notice I said SLOT, not bit. You should think of it as the entire slot matching, not necessarily a number because this can be done with many different data types which have different widths.</p>
+<p><img src="compare_equals_result.png" alt="Compare Equals Result"></p>
+<p>Now we need to check the result of the comparison. We do that by calling <code>Sse2.MoveMask</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> mask <span style="color:#f92672">=</span> Sse2.MoveMask comparison
+result <span style="color:#f92672">&lt;-</span> <span style="color:#f92672">(</span>mask <span style="color:#f92672">=</span> 3<span style="color:#f92672">)</span>
+</code></pre></div><p><code>MoveMask</code> is calling a <code>MOVMSK</code> hardware intrinsic which is kind of a magical operation that confused me to no end. The explanation of it in the Intel documentation didn&rsquo;t help me much either. There are actually a lot of different <code>MOVMSK</code> intrinsics depending on the data you are working with. In our case it is working with a 64-bit float so it is calling <a href="https://www.laruence.com/x86/MOVMSKPD.html"><code>MOVMSKPD</code></a>. All <code>MOVMSK</code> operations take the highest order bit from each slot and put them in the lowest order bits in the output. This is effectively creating a <a href="https://en.wikipedia.org/wiki/Mask_(computing)">Bitmask</a>. A Bitmask can also be interpreted as an <code>int</code>.</p>
+<p>Here is an example of what <code>MOVMSK</code> is doing using my 8-bit example.</p>
+<p><img src="movemask_action.png" alt="Mask Result"></p>
+<p>It moved the highest order bit from each slot into the lowest order bits on the output. This new mask gets interpreted as an <code>int</code> which has a value of <code>2</code>.</p>
+<p>So, in this code, if both values match the output mask would have <code>11</code> in the lowest order bits of a 32-bit <code>int</code> which would be equivalent to <code>3</code>. That&rsquo;s why the test for whether all the values match is <code>mask = 3</code>.</p>
+<p>Okay, we made it to the bottom of the loop. Now we just need to increment our index forward far enough to get a fresh set of values to load into our vectors. We want to increment by how many of our test elements fit into a <code>Vector128</code> which is why we add <code>Vector128&lt;float&gt;.Count</code> to the index.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp">idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> Vector128<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;.</span>Count
+</code></pre></div><p>We will keep looping until we get through the elements, we can process using the vector operations. We then make it to the final loop which checks any remaining values that we need to process in a scalar way.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">&amp;&amp;</span> result <span style="color:#66d9ef">do</span>
+    <span style="color:#66d9ef">if</span> a<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;&gt;</span> b<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span> <span style="color:#66d9ef">then</span>
+        result <span style="color:#f92672">&lt;-</span> <span style="color:#66d9ef">false</span>
+
+    idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+</code></pre></div><p>Wow, that was a lot. Let&rsquo;s now create a <code>Settings</code> type that uses these SSE2 instructions and see if we get a speed up.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">module</span> SseFloatArrayEquals <span style="color:#f92672">=</span>
+
+    <span style="color:#f92672">[&lt;</span>CustomEquality<span style="color:#f92672">;</span> NoComparison<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Settings</span> <span style="color:#f92672">=</span>
+        <span style="color:#f92672">{</span>
+            Levels <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            MaxRates <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            Buffers <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span>BufferState<span style="color:#f92672">&gt;</span>
+        <span style="color:#f92672">}</span>
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">Equals</span> b <span style="color:#f92672">=</span>
+            <span style="color:#66d9ef">match</span> b <span style="color:#66d9ef">with</span>
+            <span style="color:#f92672">|</span> <span style="color:#f92672">:?</span> Settings <span style="color:#66d9ef">as</span> other <span style="color:#f92672">-&gt;</span>
+                <span style="color:#f92672">(</span>equals this<span style="color:#f92672">.</span>Levels other<span style="color:#f92672">.</span>Levels<span style="color:#f92672">)</span>
+                <span style="color:#f92672">&amp;&amp;</span> <span style="color:#f92672">(</span>equals this<span style="color:#f92672">.</span>MaxRates other<span style="color:#f92672">.</span>MaxRates<span style="color:#f92672">)</span>
+                <span style="color:#f92672">&amp;&amp;</span> <span style="color:#f92672">(</span>equals this<span style="color:#f92672">.</span>Buffers other<span style="color:#f92672">.</span>Buffers<span style="color:#f92672">)</span>
+            <span style="color:#f92672">|</span> <span style="color:#f92672">_</span> <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">false</span>
+            
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">GetHashCode</span> () <span style="color:#f92672">=</span>
+            <span style="color:#66d9ef">let</span> levelsHash <span style="color:#f92672">=</span> HashFloatArray this<span style="color:#f92672">.</span>Levels
+            <span style="color:#66d9ef">let</span> maxRatesHash <span style="color:#f92672">=</span> HashFloatArray this<span style="color:#f92672">.</span>MaxRates
+            <span style="color:#66d9ef">let</span> buffersHash <span style="color:#f92672">=</span> this<span style="color:#f92672">.</span>Buffers<span style="color:#f92672">.</span>GetHashCode()
+            hash <span style="color:#f92672">(</span>levelsHash<span style="color:#f92672">,</span> maxRatesHash<span style="color:#f92672">,</span> buffersHash<span style="color:#f92672">)</span>
+</code></pre></div><p>We then add our new benchmark&hellip;</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Benchmarks</span> () <span style="color:#f92672">=</span>
+    <span style="color:#75715e">// Previous benchmarks still here
+</span><span style="color:#75715e"></span>    
+    <span style="color:#f92672">[&lt;</span>Benchmark<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">SseFloatArrayEquals</span> () <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+        <span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> 0
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> SseFloatArrayEquals.settingsKeys<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">let</span> testKey <span style="color:#f92672">=</span> SseFloatArrayEquals.settingsKeys<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span>
+            result <span style="color:#f92672">&lt;-</span> SseFloatArrayEquals.settingsDictionary<span style="color:#f92672">.[</span>testKey<span style="color:#f92672">]</span>
+
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+
+        result
+</code></pre></div><p>&hellip;and compile and run. What do we get?</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Mean</th>
+<th style="text-align:right">Error</th>
+<th style="text-align:right">StdDev</th>
+<th style="text-align:right">Median</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Default</td>
+<td style="text-align:right">39.472 ms</td>
+<td style="text-align:right">0.4295 ms</td>
+<td style="text-align:right">0.4018 ms</td>
+<td style="text-align:right">39.438 ms</td>
+</tr>
+<tr>
+<td>Simple</td>
+<td style="text-align:right">39.010 ms</td>
+<td style="text-align:right">0.5248 ms</td>
+<td style="text-align:right">0.4909 ms</td>
+<td style="text-align:right">39.157 ms</td>
+</tr>
+<tr>
+<td>FloatHash</td>
+<td style="text-align:right">10.989 ms</td>
+<td style="text-align:right">0.1300 ms</td>
+<td style="text-align:right">0.1216 ms</td>
+<td style="text-align:right">11.033 ms</td>
+</tr>
+<tr>
+<td>FloatHashShort</td>
+<td style="text-align:right">9.554 ms</td>
+<td style="text-align:right">0.1898 ms</td>
+<td style="text-align:right">0.2400 ms</td>
+<td style="text-align:right">9.410 ms</td>
+</tr>
+<tr>
+<td>ArrayEquals</td>
+<td style="text-align:right">7.286 ms</td>
+<td style="text-align:right">0.0442 ms</td>
+<td style="text-align:right">0.0392 ms</td>
+<td style="text-align:right">7.274 ms</td>
+</tr>
+<tr>
+<td>SseFloatArrayEquals</td>
+<td style="text-align:right">6.453 ms</td>
+<td style="text-align:right">0.0864 ms</td>
+<td style="text-align:right">0.0808 ms</td>
+<td style="text-align:right">6.440 ms</td>
+</tr>
+</tbody>
+</table>
+<p>Excellent. A little more progress but we&rsquo;d still like to see if we can get some more.</p>
+<h2 id="bytes-all-the-way-down">Bytes all the way down<a hidden class="anchor" aria-hidden="true" href="#bytes-all-the-way-down">#</a></h2>
+<p>There is a comparison that we haven&rsquo;t looked at yet. It&rsquo;s the equality of the <code>Buffers</code> field. You may remember that this field is an <code>array&lt;BufferState&gt;</code>. <code>BufferState</code> is a discriminated union and so far has been using the built in F# equality. Something important to note, the default DU is a reference type. This means that it is passed by reference and if you want to compare the equality of two different DUs, you&rsquo;ll need to follow there references to get the underlying data.</p>
+<p>Fortunately, F# has added the ability to make struct DUs with the <code>[&lt;Struct&gt;]</code> keyword. This is great for high performance scenarios but there are downsides. I don&rsquo;t have the space to go into it here but will refer you to Bartosz Sypytkowski&rsquo;s excellent blog post <a href="https://bartoszsypytkowski.com/writing-high-performance-f-code/">here</a>. It&rsquo;s a great read and will provide you significant insight into how to get the most performance out of F#.</p>
+<p>So why do I care about the fact that I can make the <code>BufferState</code> DU into a struct? Well, if I&rsquo;m storing all the data in an array and that data is a struct, then everything I need to compare will be contiguous. Now of course there are no hardware intrinsics in an x86 CPU for comparing F# types, but there are intrinsics for comparing raw bytes. If I can get a pointer to the <code>array&lt;BufferState&gt;</code> and simply compare the bytes for equality I can accelerate the equality check of the <code>Buffers</code> field as well.</p>
+<p>Let&rsquo;s get to work. We&rsquo;ll need to define a new type <code>BufferStateStruct</code> which is exactly the same as a <code>BufferState</code> but with the <code>[&lt;Sturct&gt;]</code> attribute. We&rsquo;ll put all this new code in a module called <code>SseByteArrayEquals</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">module</span> SseByteArrayEquals <span style="color:#f92672">=</span>
+
+    <span style="color:#f92672">[&lt;</span>Struct<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">type</span> <span style="color:#a6e22e">BufferStateStruct</span> <span style="color:#f92672">=</span>
+        <span style="color:#f92672">|</span> Full
+        <span style="color:#f92672">|</span> Partial
+        <span style="color:#f92672">|</span> Empty
+</code></pre></div><p>Now we need to define a new <code>equals</code> function that can take two <code>array&lt;'T&gt;</code> and check their equality based on the bytes matching. Again, I&rsquo;m going to throw the whole function at you and then break it down. It&rsquo;s like what we went through in the previous section with some minor tweaks.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">module</span> SseByteArrayEquals <span style="color:#f92672">=</span>
+
+    <span style="color:#66d9ef">let</span> private equals<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">&#39;</span>T <span style="color:#66d9ef">when</span> <span style="color:#66d9ef">&#39;</span>T <span style="color:#f92672">:</span> unmanaged<span style="color:#f92672">&gt;</span> <span style="color:#f92672">(</span>a<span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">&#39;</span>T<span style="color:#f92672">&gt;)</span> <span style="color:#f92672">(</span>b<span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">&#39;</span>T<span style="color:#f92672">&gt;)</span> <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">if</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">&lt;&gt;</span> b<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">then</span>
+            invalidArg <span style="color:#f92672">(</span>nameof b<span style="color:#f92672">)</span> <span style="color:#e6db74">&#34;Cannot perform equals on arrays of different lengths&#34;</span>
+        
+        <span style="color:#66d9ef">let</span> len <span style="color:#f92672">=</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">*</span> sizeof<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">&#39;</span>T<span style="color:#f92672">&gt;</span> <span style="color:#f92672">/</span> sizeof<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">byte</span><span style="color:#f92672">&gt;</span>
+        <span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> <span style="color:#66d9ef">true</span>
+        <span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+        <span style="color:#66d9ef">let</span> lastBlockIdx <span style="color:#f92672">=</span> len <span style="color:#f92672">-</span> <span style="color:#f92672">(</span>len <span style="color:#f92672">%</span> Vector128<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">byte</span><span style="color:#f92672">&gt;.</span>Count<span style="color:#f92672">)</span>
+        <span style="color:#66d9ef">use</span> pointerA <span style="color:#f92672">=</span> <span style="color:#66d9ef">fixed</span> a
+        <span style="color:#66d9ef">use</span> pointerB <span style="color:#f92672">=</span> <span style="color:#66d9ef">fixed</span> b
+        <span style="color:#66d9ef">let</span> bytePointerA <span style="color:#f92672">=</span> pointerA <span style="color:#f92672">|&gt;</span> NativePtr.toNativeInt <span style="color:#f92672">|&gt;</span> NativePtr.ofNativeInt<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">byte</span><span style="color:#f92672">&gt;</span>
+        <span style="color:#66d9ef">let</span> bytePointerB <span style="color:#f92672">=</span> pointerB <span style="color:#f92672">|&gt;</span> NativePtr.toNativeInt <span style="color:#f92672">|&gt;</span> NativePtr.ofNativeInt<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">byte</span><span style="color:#f92672">&gt;</span>
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span>lastBlockIdx <span style="color:#f92672">&amp;&amp;</span> result <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">let</span> aVector <span style="color:#f92672">=</span> Sse2.LoadVector128 <span style="color:#f92672">(</span>NativePtr.add bytePointerA idx<span style="color:#f92672">)</span>
+            <span style="color:#66d9ef">let</span> bVector <span style="color:#f92672">=</span> Sse2.LoadVector128 <span style="color:#f92672">(</span>NativePtr.add bytePointerB idx<span style="color:#f92672">)</span>
+
+            <span style="color:#66d9ef">let</span> comparison <span style="color:#f92672">=</span> Sse2.CompareEqual <span style="color:#f92672">(</span>aVector<span style="color:#f92672">,</span> bVector<span style="color:#f92672">)</span>
+            <span style="color:#66d9ef">let</span> mask <span style="color:#f92672">=</span> Sse2.MoveMask <span style="color:#f92672">(</span>comparison<span style="color:#f92672">)</span>
+
+            result <span style="color:#f92672">&lt;-</span> <span style="color:#f92672">(</span>mask <span style="color:#f92672">=</span> 65535<span style="color:#f92672">)</span>
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> Vector128<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">byte</span><span style="color:#f92672">&gt;.</span>Count
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> len <span style="color:#f92672">&amp;&amp;</span> result <span style="color:#66d9ef">do</span>
+            result <span style="color:#f92672">&lt;-</span> <span style="color:#f92672">((</span>NativePtr.get bytePointerA idx<span style="color:#f92672">)</span> <span style="color:#f92672">=</span> <span style="color:#f92672">(</span>NativePtr.get bytePointerB idx<span style="color:#f92672">))</span>
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+
+        result
+</code></pre></div><p>Our function declarations have changed slightly. We now take an <code>array&lt;'T&gt;</code> but we added the restriction <code>unmanaged</code>. You can read more about type restrictions <a href="https://docs.microsoft.com/en-us/dotnet/fsharp/language-reference/generics/constraints">here</a> but this restriction is necessary for us to be able to view the array as just a set of bytes.</p>
+<p>At the beginning we have the same check to ensure that the arrays are the same length.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">if</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">&lt;&gt;</span> b<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">then</span>
+    invalidArg <span style="color:#f92672">(</span>nameof b<span style="color:#f92672">)</span> <span style="color:#e6db74">&#34;Cannot perform equals on arrays of different lengths&#34;</span>
+</code></pre></div><p>We then need to know how long our arrays are in terms of the number of bytes since we will be operating on them as just bytes.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> len <span style="color:#f92672">=</span> a<span style="color:#f92672">.</span>Length <span style="color:#f92672">*</span> sizeof<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">&#39;</span>T<span style="color:#f92672">&gt;</span> <span style="color:#f92672">/</span> sizeof<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">byte</span><span style="color:#f92672">&gt;</span>
+</code></pre></div><p>We then create <code>result</code> to track what we have found, create an <code>int</code> to track our progress and calculate the index of the last block we will be able to process using vector operations.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> <span style="color:#66d9ef">true</span>
+<span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+<span style="color:#66d9ef">let</span> lastBlockIdx <span style="color:#f92672">=</span> len <span style="color:#f92672">-</span> <span style="color:#f92672">(</span>len <span style="color:#f92672">%</span> Vector128<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">byte</span><span style="color:#f92672">&gt;.</span>Count<span style="color:#f92672">)</span>
+</code></pre></div><p>We now get our pointers to pin the array down to prevent GC from moving things from underneath us.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">use</span> pointerA <span style="color:#f92672">=</span> <span style="color:#66d9ef">fixed</span> a
+<span style="color:#66d9ef">use</span> pointerB <span style="color:#f92672">=</span> <span style="color:#66d9ef">fixed</span> b
+</code></pre></div><p>What you can&rsquo;t see here is that <code>pointerA</code> and <code>pointerB</code> are both of type <code>nativeptr&lt;'T&gt;</code>. That&rsquo;s not what we want. We want a <code>nativeptr&lt;byte&gt;</code>. We use the functions in the <code>FSharp.NativeInterop</code> namespace to convert the pointer to a <code>nativeptr&lt;byte&gt;</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> bytePointerA <span style="color:#f92672">=</span> pointerA <span style="color:#f92672">|&gt;</span> NativePtr.toNativeInt <span style="color:#f92672">|&gt;</span> NativePtr.ofNativeInt<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">byte</span><span style="color:#f92672">&gt;</span>
+<span style="color:#66d9ef">let</span> bytePointerB <span style="color:#f92672">=</span> pointerB <span style="color:#f92672">|&gt;</span> NativePtr.toNativeInt <span style="color:#f92672">|&gt;</span> NativePtr.ofNativeInt<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">byte</span><span style="color:#f92672">&gt;</span>
+</code></pre></div><p>The while loop for the vector operations is the same except for one difference. The mask value we check. Before we were comparing 2 floats at a time, so the possible mask values were <code>00</code>, <code>01</code>, <code>10</code>, and <code>11</code>. Now we are working in units of <code>byte</code> and we operate on 128 bits at a time. This means that when we call <code>MoveMask</code> we will generate a mask with potentially 16 1s in the least significant bits. If I type that out as bits it looks like this.</p>
+<pre><code>00000000 00000000 11111111 11111111
+</code></pre><p>That mask is getting interpreted as a 32-bit number which gives a value of <code>65535</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> lastBlockIdx <span style="color:#f92672">&amp;&amp;</span> result <span style="color:#66d9ef">do</span>
+    <span style="color:#66d9ef">let</span> aVector <span style="color:#f92672">=</span> Sse2.LoadVector128 <span style="color:#f92672">(</span>NativePtr.add bytePointerA idx<span style="color:#f92672">)</span>
+    <span style="color:#66d9ef">let</span> bVector <span style="color:#f92672">=</span> Sse2.LoadVector128 <span style="color:#f92672">(</span>NativePtr.add bytePointerB idx<span style="color:#f92672">)</span>
+
+    <span style="color:#66d9ef">let</span> comparison <span style="color:#f92672">=</span> Sse2.CompareEqual <span style="color:#f92672">(</span>aVector<span style="color:#f92672">,</span> bVector<span style="color:#f92672">)</span>
+    <span style="color:#66d9ef">let</span> mask <span style="color:#f92672">=</span> Sse2.MoveMask <span style="color:#f92672">(</span>comparison<span style="color:#f92672">)</span>
+
+    result <span style="color:#f92672">&lt;-</span> <span style="color:#f92672">(</span>mask <span style="color:#f92672">=</span> 65535<span style="color:#f92672">)</span> <span style="color:#75715e">// This has changed since we are working in bytes.
+</span><span style="color:#75715e"></span>    idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> Vector128<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">byte</span><span style="color:#f92672">&gt;.</span>Count
+</code></pre></div><p>The rest of the code in the function is the same as before so I won&rsquo;t go over it. Our <code>Settings</code> type can change though since our <code>array&lt;float&gt;</code> and <code>array&lt;BufferStateStruct&gt;</code> can both use this new <code>equals</code> function.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp">    <span style="color:#f92672">[&lt;</span>CustomEquality<span style="color:#f92672">;</span> NoComparison<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Settings</span> <span style="color:#f92672">=</span>
+        <span style="color:#f92672">{</span>
+            Levels <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            MaxRates <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span><span style="color:#66d9ef">float</span><span style="color:#f92672">&gt;</span>
+            Buffers <span style="color:#f92672">:</span> array<span style="color:#f92672">&lt;</span>BufferStateStruct<span style="color:#f92672">&gt;</span>
+        <span style="color:#f92672">}</span>
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">Equals</span> b <span style="color:#f92672">=</span>
+            <span style="color:#66d9ef">match</span> b <span style="color:#66d9ef">with</span>
+            <span style="color:#f92672">|</span> <span style="color:#f92672">:?</span> Settings <span style="color:#66d9ef">as</span> other <span style="color:#f92672">-&gt;</span>
+                <span style="color:#75715e">// Notice that all of the arrays are using the same equals function
+</span><span style="color:#75715e"></span>                <span style="color:#f92672">(</span>equals this<span style="color:#f92672">.</span>Levels other<span style="color:#f92672">.</span>Levels<span style="color:#f92672">)</span>
+                <span style="color:#f92672">&amp;&amp;</span> <span style="color:#f92672">(</span>equals this<span style="color:#f92672">.</span>MaxRates other<span style="color:#f92672">.</span>MaxRates<span style="color:#f92672">)</span>
+                <span style="color:#f92672">&amp;&amp;</span> <span style="color:#f92672">(</span>equals this<span style="color:#f92672">.</span>Buffers other<span style="color:#f92672">.</span>Buffers<span style="color:#f92672">)</span>
+            <span style="color:#f92672">|</span> <span style="color:#f92672">_</span> <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">false</span>
+            
+        <span style="color:#66d9ef">override</span> this.<span style="color:#a6e22e">GetHashCode</span> () <span style="color:#f92672">=</span>
+            <span style="color:#66d9ef">let</span> levelsHash <span style="color:#f92672">=</span> HashFloatArray this<span style="color:#f92672">.</span>Levels
+            <span style="color:#66d9ef">let</span> maxRatesHash <span style="color:#f92672">=</span> HashFloatArray this<span style="color:#f92672">.</span>MaxRates
+            <span style="color:#66d9ef">let</span> buffersHash <span style="color:#f92672">=</span> this<span style="color:#f92672">.</span>Buffers<span style="color:#f92672">.</span>GetHashCode()
+            hash <span style="color:#f92672">(</span>levelsHash<span style="color:#f92672">,</span> maxRatesHash<span style="color:#f92672">,</span> buffersHash<span style="color:#f92672">)</span>
+</code></pre></div><p>We add another benchmark&hellip;</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Benchmarks</span> () <span style="color:#f92672">=</span>
+
+    <span style="color:#75715e">// ...previous benchmarks
+</span><span style="color:#75715e"></span>
+    <span style="color:#f92672">[&lt;</span>Benchmark<span style="color:#f92672">&gt;]</span>
+    <span style="color:#66d9ef">member</span> _.<span style="color:#a6e22e">SseByteArrayEquals</span> () <span style="color:#f92672">=</span>
+        <span style="color:#66d9ef">let</span> mutable idx <span style="color:#f92672">=</span> 0
+        <span style="color:#66d9ef">let</span> mutable result <span style="color:#f92672">=</span> 0
+
+        <span style="color:#66d9ef">while</span> idx <span style="color:#f92672">&lt;</span> SseByteArrayEquals.settingsKeys<span style="color:#f92672">.</span>Length <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">let</span> testKey <span style="color:#f92672">=</span> SseByteArrayEquals.settingsKeys<span style="color:#f92672">.[</span>idx<span style="color:#f92672">]</span>
+            result <span style="color:#f92672">&lt;-</span> SseByteArrayEquals.settingsDictionary<span style="color:#f92672">.[</span>testKey<span style="color:#f92672">]</span>
+
+            idx <span style="color:#f92672">&lt;-</span> idx <span style="color:#f92672">+</span> 1
+
+        result
+
+</code></pre></div><p>&hellip;compile and run our tests to get the following.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Mean</th>
+<th style="text-align:right">Error</th>
+<th style="text-align:right">StdDev</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Default</td>
+<td style="text-align:right">38.424 ms</td>
+<td style="text-align:right">0.4668 ms</td>
+<td style="text-align:right">0.4138 ms</td>
+</tr>
+<tr>
+<td>Simple</td>
+<td style="text-align:right">39.739 ms</td>
+<td style="text-align:right">0.4141 ms</td>
+<td style="text-align:right">0.3874 ms</td>
+</tr>
+<tr>
+<td>FloatHash</td>
+<td style="text-align:right">10.290 ms</td>
+<td style="text-align:right">0.0969 ms</td>
+<td style="text-align:right">0.0859 ms</td>
+</tr>
+<tr>
+<td>FloatHashShort</td>
+<td style="text-align:right">9.541 ms</td>
+<td style="text-align:right">0.1061 ms</td>
+<td style="text-align:right">0.0993 ms</td>
+</tr>
+<tr>
+<td>ArrayEquals</td>
+<td style="text-align:right">7.469 ms</td>
+<td style="text-align:right">0.0763 ms</td>
+<td style="text-align:right">0.0713 ms</td>
+</tr>
+<tr>
+<td>SseFloatArrayEquals</td>
+<td style="text-align:right">6.966 ms</td>
+<td style="text-align:right">0.0580 ms</td>
+<td style="text-align:right">0.0453 ms</td>
+</tr>
+<tr>
+<td>SseByteArrayEquals</td>
+<td style="text-align:right">1.653 ms</td>
+<td style="text-align:right">0.0178 ms</td>
+<td style="text-align:right">0.0149 ms</td>
+</tr>
+</tbody>
+</table>
+<p>This is great! We got another huge speed boost. Putting your data into vectors and using SIMD to rapidly process them can lead to some huge performance gains.</p>
+<h2 id="wrap-up">Wrap Up<a hidden class="anchor" aria-hidden="true" href="#wrap-up">#</a></h2>
+<p>I hope you enjoyed this journey. I had a lot of fun figuring out just how fast I could make this lookup since it is at the heart of some of the most performance sensitive code I wrote. I still have a lot to learn and if you have feedback, I would love to hear it! You can check out the code <a href="https://github.com/matthewcrews/RecordsAsKeysForDictionary">here</a>. You can run the benchmarks yourself and see what you find.</p>
+<p>Feel free to email me or send me a message on Twitter. I&rsquo;m on the journey and always eager to learn more.
+z</p>
+
+</div>
+  <footer class="post-footer">
+
+
+
+<div class="share-buttons">
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Accelerating Dictionary Lookup with Records as Keys on twitter"
+        href="https://twitter.com/intent/tweet/?text=Accelerating%20Dictionary%20Lookup%20with%20Records%20as%20Keys&amp;url=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2frecords-as-keys-for-dictionaries%2f&amp;hashtags=">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-253.927,424.544c135.939,0 210.268,-112.643 210.268,-210.268c0,-3.218 0,-6.437 -0.153,-9.502c14.406,-10.421 26.973,-23.448 36.935,-38.314c-13.18,5.824 -27.433,9.809 -42.452,11.648c15.326,-9.196 26.973,-23.602 32.49,-40.92c-14.252,8.429 -30.038,14.56 -46.896,17.931c-13.487,-14.406 -32.644,-23.295 -53.946,-23.295c-40.767,0 -73.87,33.104 -73.87,73.87c0,5.824 0.613,11.494 1.992,16.858c-61.456,-3.065 -115.862,-32.49 -152.337,-77.241c-6.284,10.881 -9.962,23.601 -9.962,37.088c0,25.594 13.027,48.276 32.95,61.456c-12.107,-0.307 -23.448,-3.678 -33.41,-9.196l0,0.92c0,35.862 25.441,65.594 59.311,72.49c-6.13,1.686 -12.72,2.606 -19.464,2.606c-4.751,0 -9.348,-0.46 -13.946,-1.38c9.349,29.426 36.628,50.728 68.965,51.341c-25.287,19.771 -57.164,31.571 -91.8,31.571c-5.977,0 -11.801,-0.306 -17.625,-1.073c32.337,21.15 71.264,33.41 112.95,33.41Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Accelerating Dictionary Lookup with Records as Keys on linkedin"
+        href="https://www.linkedin.com/shareArticle?mini=true&amp;url=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2frecords-as-keys-for-dictionaries%2f&amp;title=Accelerating%20Dictionary%20Lookup%20with%20Records%20as%20Keys&amp;summary=Accelerating%20Dictionary%20Lookup%20with%20Records%20as%20Keys&amp;source=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2frecords-as-keys-for-dictionaries%2f">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-288.985,423.278l0,-225.717l-75.04,0l0,225.717l75.04,0Zm270.539,0l0,-129.439c0,-69.333 -37.018,-101.586 -86.381,-101.586c-39.804,0 -57.634,21.891 -67.617,37.266l0,-31.958l-75.021,0c0.995,21.181 0,225.717 0,225.717l75.02,0l0,-126.056c0,-6.748 0.486,-13.492 2.474,-18.315c5.414,-13.475 17.767,-27.434 38.494,-27.434c27.135,0 38.007,20.707 38.007,51.037l0,120.768l75.024,0Zm-307.552,-334.556c-25.674,0 -42.448,16.879 -42.448,39.002c0,21.658 16.264,39.002 41.455,39.002l0.484,0c26.165,0 42.452,-17.344 42.452,-39.002c-0.485,-22.092 -16.241,-38.954 -41.943,-39.002Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Accelerating Dictionary Lookup with Records as Keys on reddit"
+        href="https://reddit.com/submit?url=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2frecords-as-keys-for-dictionaries%2f&title=Accelerating%20Dictionary%20Lookup%20with%20Records%20as%20Keys">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-3.446,265.638c0,-22.964 -18.616,-41.58 -41.58,-41.58c-11.211,0 -21.361,4.457 -28.841,11.666c-28.424,-20.508 -67.586,-33.757 -111.204,-35.278l18.941,-89.121l61.884,13.157c0.756,15.734 13.642,28.29 29.56,28.29c16.407,0 29.706,-13.299 29.706,-29.701c0,-16.403 -13.299,-29.702 -29.706,-29.702c-11.666,0 -21.657,6.792 -26.515,16.578l-69.105,-14.69c-1.922,-0.418 -3.939,-0.042 -5.585,1.036c-1.658,1.073 -2.811,2.761 -3.224,4.686l-21.152,99.438c-44.258,1.228 -84.046,14.494 -112.837,35.232c-7.468,-7.164 -17.589,-11.591 -28.757,-11.591c-22.965,0 -41.585,18.616 -41.585,41.58c0,16.896 10.095,31.41 24.568,37.918c-0.639,4.135 -0.99,8.328 -0.99,12.576c0,63.977 74.469,115.836 166.33,115.836c91.861,0 166.334,-51.859 166.334,-115.836c0,-4.218 -0.347,-8.387 -0.977,-12.493c14.564,-6.47 24.735,-21.034 24.735,-38.001Zm-119.474,108.193c-20.27,20.241 -59.115,21.816 -70.534,21.816c-11.428,0 -50.277,-1.575 -70.522,-21.82c-3.007,-3.008 -3.007,-7.882 0,-10.889c3.003,-2.999 7.882,-3.003 10.885,0c12.777,12.781 40.11,17.317 59.637,17.317c19.522,0 46.86,-4.536 59.657,-17.321c3.016,-2.999 7.886,-2.995 10.885,0.008c3.008,3.011 3.003,7.882 -0.008,10.889Zm-5.23,-48.781c-16.373,0 -29.701,-13.324 -29.701,-29.698c0,-16.381 13.328,-29.714 29.701,-29.714c16.378,0 29.706,13.333 29.706,29.714c0,16.374 -13.328,29.698 -29.706,29.698Zm-160.386,-29.702c0,-16.381 13.328,-29.71 29.714,-29.71c16.369,0 29.689,13.329 29.689,29.71c0,16.373 -13.32,29.693 -29.689,29.693c-16.386,0 -29.714,-13.32 -29.714,-29.693Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Accelerating Dictionary Lookup with Records as Keys on facebook"
+        href="https://facebook.com/sharer/sharer.php?u=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2frecords-as-keys-for-dictionaries%2f">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-106.468,0l0,-192.915l66.6,0l12.672,-82.621l-79.272,0l0,-53.617c0,-22.603 11.073,-44.636 46.58,-44.636l36.042,0l0,-70.34c0,0 -32.71,-5.582 -63.982,-5.582c-65.288,0 -107.96,39.569 -107.96,111.204l0,62.971l-72.573,0l0,82.621l72.573,0l0,192.915l-191.104,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Accelerating Dictionary Lookup with Records as Keys on whatsapp"
+        href="https://api.whatsapp.com/send?text=Accelerating%20Dictionary%20Lookup%20with%20Records%20as%20Keys%20-%20https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2frecords-as-keys-for-dictionaries%2f">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-58.673,127.703c-33.842,-33.881 -78.847,-52.548 -126.798,-52.568c-98.799,0 -179.21,80.405 -179.249,179.234c-0.013,31.593 8.241,62.428 23.927,89.612l-25.429,92.884l95.021,-24.925c26.181,14.28 55.659,21.807 85.658,21.816l0.074,0c98.789,0 179.206,-80.413 179.247,-179.243c0.018,-47.895 -18.61,-92.93 -52.451,-126.81Zm-126.797,275.782l-0.06,0c-26.734,-0.01 -52.954,-7.193 -75.828,-20.767l-5.441,-3.229l-56.386,14.792l15.05,-54.977l-3.542,-5.637c-14.913,-23.72 -22.791,-51.136 -22.779,-79.287c0.033,-82.142 66.867,-148.971 149.046,-148.971c39.793,0.014 77.199,15.531 105.329,43.692c28.128,28.16 43.609,65.592 43.594,105.4c-0.034,82.149 -66.866,148.983 -148.983,148.984Zm81.721,-111.581c-4.479,-2.242 -26.499,-13.075 -30.604,-14.571c-4.105,-1.495 -7.091,-2.241 -10.077,2.241c-2.986,4.483 -11.569,14.572 -14.182,17.562c-2.612,2.988 -5.225,3.364 -9.703,1.12c-4.479,-2.241 -18.91,-6.97 -36.017,-22.23c-13.314,-11.876 -22.304,-26.542 -24.916,-31.026c-2.612,-4.484 -0.279,-6.908 1.963,-9.14c2.016,-2.007 4.48,-5.232 6.719,-7.847c2.24,-2.615 2.986,-4.484 4.479,-7.472c1.493,-2.99 0.747,-5.604 -0.374,-7.846c-1.119,-2.241 -10.077,-24.288 -13.809,-33.256c-3.635,-8.733 -7.327,-7.55 -10.077,-7.688c-2.609,-0.13 -5.598,-0.158 -8.583,-0.158c-2.986,0 -7.839,1.121 -11.944,5.604c-4.105,4.484 -15.675,15.32 -15.675,37.364c0,22.046 16.048,43.342 18.287,46.332c2.24,2.99 31.582,48.227 76.511,67.627c10.685,4.615 19.028,7.371 25.533,9.434c10.728,3.41 20.492,2.929 28.209,1.775c8.605,-1.285 26.499,-10.833 30.231,-21.295c3.732,-10.464 3.732,-19.431 2.612,-21.298c-1.119,-1.869 -4.105,-2.99 -8.583,-5.232Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Accelerating Dictionary Lookup with Records as Keys on telegram"
+        href="https://telegram.me/share/url?text=Accelerating%20Dictionary%20Lookup%20with%20Records%20as%20Keys&amp;url=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2frecords-as-keys-for-dictionaries%2f">
+        <svg version="1.1" xml:space="preserve" viewBox="2 2 28 28">
+            <path
+                d="M26.49,29.86H5.5a3.37,3.37,0,0,1-2.47-1,3.35,3.35,0,0,1-1-2.47V5.48A3.36,3.36,0,0,1,3,3,3.37,3.37,0,0,1,5.5,2h21A3.38,3.38,0,0,1,29,3a3.36,3.36,0,0,1,1,2.46V26.37a3.35,3.35,0,0,1-1,2.47A3.38,3.38,0,0,1,26.49,29.86Zm-5.38-6.71a.79.79,0,0,0,.85-.66L24.73,9.24a.55.55,0,0,0-.18-.46.62.62,0,0,0-.41-.17q-.08,0-16.53,6.11a.59.59,0,0,0-.41.59.57.57,0,0,0,.43.52l4,1.24,1.61,4.83a.62.62,0,0,0,.63.43.56.56,0,0,0,.4-.17L16.54,20l4.09,3A.9.9,0,0,0,21.11,23.15ZM13.8,20.71l-1.21-4q8.72-5.55,8.78-5.55c.15,0,.23,0,.23.16a.18.18,0,0,1,0,.06s-2.51,2.3-7.52,6.8Z" />
+        </svg>
+    </a>
+</div>
+
+  </footer>
+</article>
+    </main><footer class="footer">
+    <span>&copy; 2021 <a href="https://matthewcrews.com">Matthew Crews</a></span>
+    <span>&middot;</span>
+    <span>Powered by <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a></span>
+    <span>&middot;</span>
+    <span>Theme <a href="https://git.io/hugopapermod" rel="noopener" target="_blank">PaperMod</a></span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)">
+    <button class="top-link" id="top-link" type="button" accesskey="g">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+            <path d="M12 6H0l6-6z" />
+        </svg>
+    </button>
+</a>
+
+
+
+<script defer src="/assets/js/highlight.min.27cd435cc9ed6abb4b496581b151804f79f366c412620272bb94e2f5f598ebcc.js" integrity="sha256-J81DXMntartLSWWBsVGAT3nzZsQSYgJyu5Ti9fWY68w="
+    onload="hljs.initHighlightingOnLoad();"></script>
+<script>
+    window.onload = function () {
+        if (localStorage.getItem("menu-scroll-position")) {
+            document.getElementById('menu').scrollLeft = localStorage.getItem("menu-scroll-position");
+        }
+    }
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.replaceState(null, null, `#${id}`);
+            }
+        });
+    });
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+    function menu_on_scroll() {
+        localStorage.setItem("menu-scroll-position", document.getElementById('menu').scrollLeft);
+    }
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+<script>
+    MathJax = {
+    tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+    }
+    };
+</script>
+<script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
+</script>
+</body>
+
+</html>

@@ -5,7 +5,17 @@
     <link>https://matthewcrews.com/</link>
     <description>Recent content on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Mon, 23 Aug 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sat, 13 Nov 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Accelerating Dictionary Lookup with Records as Keys</title>
+      <link>https://matthewcrews.com/blog/2021/11/records-as-keys-for-dictionaries/</link>
+      <pubDate>Sat, 13 Nov 2021 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2021/11/records-as-keys-for-dictionaries/</guid>
+      <description>NOTE: All the code cand be found here. Feel free to follow along!
+  Warning: This blog post involves native pointers and x86 assembly. This is intended for someone who absolutely needs their F# to go as fast as possible. This is not intended as a &amp;ldquo;How you should write F#&amp;rdquo; type of blog post. If you want clean, simple code you may want to turn around. If you are a speed junky, please continue 😀.</description>
+    </item>
+    
     <item>
       <title>SliceMap Rework - Part 2</title>
       <link>https://matthewcrews.com/blog/2021/08/slicemap-rework-part-2/</link>
