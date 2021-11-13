@@ -13,7 +13,7 @@
       
       <guid>https://matthewcrews.com/blog/2021/11/records-as-keys-for-dictionaries/</guid>
       <description>NOTE: All the code can be found here. Feel free to follow along!
-  Warning: This blog post involves native pointers and x86 assembly. This is intended for someone who absolutely needs their F# to go as fast as possible. This is not intended as a &amp;ldquo;How you should write F#&amp;rdquo; type of blog post. If you want clean, simple code you may want to turn around. If you are a speed junky, please continue 😀.</description>
+ The Problem I ran into an interesting problem a week ago and I think others may find some value in it. I am currently working on writing a small Discrete-Event Simulation engine for a manufacturing facility. This problem required a bespoke solution since the current products that are available on the market are built with Modelers in mind and not deployment.</description>
     </item>
     
     <item>
