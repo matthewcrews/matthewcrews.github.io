@@ -12,7 +12,7 @@
       <pubDate>Sat, 13 Nov 2021 00:00:00 +0000</pubDate>
       
       <guid>https://matthewcrews.com/blog/2021/11/records-as-keys-for-dictionaries/</guid>
-      <description>NOTE: All the code cand be found here. Feel free to follow along!
+      <description>NOTE: All the code can be found here. Feel free to follow along!
   Warning: This blog post involves native pointers and x86 assembly. This is intended for someone who absolutely needs their F# to go as fast as possible. This is not intended as a &amp;ldquo;How you should write F#&amp;rdquo; type of blog post. If you want clean, simple code you may want to turn around. If you are a speed junky, please continue 😀.</description>
     </item>
     
