@@ -5,7 +5,17 @@
     <link>https://matthewcrews.com/</link>
     <description>Recent content on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Sat, 13 Nov 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Tue, 16 Nov 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>BenchmarkDotNet Gotcha with F#</title>
+      <link>https://matthewcrews.com/blog/2021/11/benchmarkdotnet-gotcha/</link>
+      <pubDate>Tue, 16 Nov 2021 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2021/11/benchmarkdotnet-gotcha/</guid>
+      <description>I have been working on creating some types which allow me to wrap an array and index it with an int which has a Unit of Measure (UoM). Right now, if you want to index into an array with an int that has a UoM, you need to remove the units.
+[&amp;lt;Measure&amp;gt;] type ItemIdx let a = [|1.0 .. 10.0|] let idx = 1&amp;lt;ItemIdx&amp;gt; let x = a[idx] // This will raise an error saying that the type `int&amp;lt;ItemIdx&amp;gt;` is not correct  let y = a[int idx] // This will work because the units are removed when calling `int` You may think, &amp;ldquo;Matthew, that call to int is going to cause a problem, isn&amp;rsquo;t it?</description>
+    </item>
+    
     <item>
       <title>Accelerating Dictionary Lookup with Records as Keys</title>
       <link>https://matthewcrews.com/blog/2021/11/records-as-keys-for-dictionaries/</link>

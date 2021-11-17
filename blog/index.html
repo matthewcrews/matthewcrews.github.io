@@ -29,7 +29,7 @@
 <meta property="og:description" content="" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://matthewcrews.com/blog/" />
-<meta property="og:updated_time" content="2021-11-13T00:00:00+00:00" />
+<meta property="og:updated_time" content="2021-11-16T00:00:00+00:00" />
 <meta name="twitter:card" content="summary"/>
 <meta name="twitter:title" content="Blogs"/>
 <meta name="twitter:description" content=""/>
@@ -109,6 +109,21 @@
 
 
 
+<article class="post-entry"> 
+
+  <header class="entry-header">
+    <h2>
+      BenchmarkDotNet Gotcha with F#
+    </h2>
+  </header>
+  <section class="entry-content">
+    <p>I have been working on creating some types which allow me to wrap an array and index it with an int which has a Unit of Measure (UoM). Right now, if you want to index into an array with an int that has a UoM, you need to remove the units.
+[&lt;Measure&gt;] type ItemIdx let a = [|1.0 .. 10.0|] let idx = 1&lt;ItemIdx&gt; let x = a[idx] // This will raise an error saying that the type `int&lt;ItemIdx&gt;` is not correct  let y = a[int idx] // This will work because the units are removed when calling `int` You may think, “Matthew, that call to int is going to cause a problem, isn’t it?...</p>
+  </section>
+  <footer class="entry-footer">November 16, 2021
+</footer>
+  <a class="entry-link" aria-label="post link to BenchmarkDotNet Gotcha with F#" href="https://matthewcrews.com/blog/2021/11/benchmarkdotnet-gotcha/"></a>
+</article>
 <article class="post-entry"> 
 
   <header class="entry-header">
@@ -240,20 +255,6 @@ Practice This first piece of advice that I give to people is to choose an algori
   <footer class="entry-footer">January 9, 2021
 </footer>
   <a class="entry-link" aria-label="post link to Learning Resources for F#" href="https://matthewcrews.com/blog/2021/01/2021-01-09/"></a>
-</article>
-<article class="post-entry"> 
-
-  <header class="entry-header">
-    <h2>
-      Maximizing Profitability of Inventory with Mathematical Planning and Machine Learning in F# - Part 3
-    </h2>
-  </header>
-  <section class="entry-content">
-    <p>In the previous two posts in this series we introduced the Food Cart Problem. We want a plan for stocking our Food Cart which will maximizes our revenue. In the first post we discussed the foods that we can stock and the restrictions we are operating under. We introduced a simple heuristic for stocking the food cart and created a simulation in order to validate what our expected revenue is....</p>
-  </section>
-  <footer class="entry-footer">January 1, 2021
-</footer>
-  <a class="entry-link" aria-label="post link to Maximizing Profitability of Inventory with Mathematical Planning and Machine Learning in F# - Part 3" href="https://matthewcrews.com/blog/2021/01/2020-01-01/"></a>
 </article>
 <footer class="page-footer">
   <nav class="pagination">
