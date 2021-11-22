@@ -5,7 +5,17 @@
     <link>https://matthewcrews.com/</link>
     <description>Recent content on Matthew Crews</description>
     <generator>Hugo -- gohugo.io</generator>
-    <lastBuildDate>Tue, 16 Nov 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Sun, 21 Nov 2021 00:00:00 +0000</lastBuildDate><atom:link href="https://matthewcrews.com/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Team Desk Assignments</title>
+      <link>https://matthewcrews.com/blog/2021/11/team-desk-assignments/</link>
+      <pubDate>Sun, 21 Nov 2021 00:00:00 +0000</pubDate>
+      
+      <guid>https://matthewcrews.com/blog/2021/11/team-desk-assignments/</guid>
+      <description>I was recently asked a question on the Flips GitHub page which I felt warranted a full blog post. It is an interesting problem that I have seen several variations on so wanted to provide a more detailed model. The largest example of this problem I saw at Rocket Technology (formerly Quicken Loans) where they must assign desks to thousands of people across several buildings across downtown Detroit, MI.
+You have a set of People that you need to assign desks to.</description>
+    </item>
+    
     <item>
       <title>BenchmarkDotNet Gotcha with F#</title>
       <link>https://matthewcrews.com/blog/2021/11/benchmarkdotnet-gotcha/</link>

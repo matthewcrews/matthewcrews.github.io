@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en" dir="auto">
+
+<head><meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<meta name="robots" content="index, follow">
+<title>Team Desk Assignments | Matthew Crews</title>
+
+<meta name="keywords" content="" />
+<meta name="description" content="I was recently asked a question on the Flips GitHub page which I felt warranted a full blog post. It is an interesting problem that I have seen several variations on so wanted to provide a more detailed model. The largest example of this problem I saw at Rocket Technology (formerly Quicken Loans) where they must assign desks to thousands of people across several buildings across downtown Detroit, MI.
+You have a set of People that you need to assign desks to.">
+<meta name="author" content="">
+<link rel="canonical" href="https://matthewcrews.com/blog/2021/11/team-desk-assignments/" />
+<link href="/assets/css/stylesheet.min.d5d820de85dae34a78c22303e07aa685bb90ec25a056c702c0b1a964ca68861d.css" integrity="sha256-1dgg3oXa40p4wiMD4HqmhbuQ7CWgVscCwLGpZMpohh0=" rel="preload stylesheet"
+    as="style">
+
+<link rel="icon" href="https://matthewcrews.com/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="https://matthewcrews.com/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://matthewcrews.com/favicon-32x32.png">
+<link rel="apple-touch-icon" href="https://matthewcrews.com/apple-touch-icon.png">
+<link rel="mask-icon" href="https://matthewcrews.com/safari-pinned-tab.svg">
+<meta name="theme-color" content="#2e2e33">
+<meta name="msapplication-TileColor" content="#2e2e33">
+<meta name="generator" content="Hugo 0.78.2" />
+
+
+<meta property="og:title" content="Team Desk Assignments" />
+<meta property="og:description" content="I was recently asked a question on the Flips GitHub page which I felt warranted a full blog post. It is an interesting problem that I have seen several variations on so wanted to provide a more detailed model. The largest example of this problem I saw at Rocket Technology (formerly Quicken Loans) where they must assign desks to thousands of people across several buildings across downtown Detroit, MI.
+You have a set of People that you need to assign desks to." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://matthewcrews.com/blog/2021/11/team-desk-assignments/" />
+<meta property="article:published_time" content="2021-11-21T00:00:00+00:00" />
+<meta property="article:modified_time" content="2021-11-21T00:00:00+00:00" />
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="Team Desk Assignments"/>
+<meta name="twitter:description" content="I was recently asked a question on the Flips GitHub page which I felt warranted a full blog post. It is an interesting problem that I have seen several variations on so wanted to provide a more detailed model. The largest example of this problem I saw at Rocket Technology (formerly Quicken Loans) where they must assign desks to thousands of people across several buildings across downtown Detroit, MI.
+You have a set of People that you need to assign desks to."/>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  "headline": "Team Desk Assignments",
+  "name": "Team Desk Assignments",
+  "description": "I was recently asked a question on the Flips GitHub page which I felt warranted a full blog post. It is an interesting problem that I have seen several variations on so wanted to …",
+  "keywords": [
+    
+  ],
+  "articleBody": "I was recently asked a question on the Flips GitHub page which I felt warranted a full blog post. It is an interesting problem that I have seen several variations on so wanted to provide a more detailed model. The largest example of this problem I saw at Rocket Technology (formerly Quicken Loans) where they must assign desks to thousands of people across several buildings across downtown Detroit, MI.\nYou have a set of People that you need to assign desks to. Each person is a part of a Team, and you would rather that people sat with their Team. Each Desk is a part of a Cluster. A Cluster is a group of desks that are next to each other. Each Person is already assigned to a Desk. You want to come up with a seating assignment that maximizes the number of people who are sitting with their time while also minimizing the number of times that people must move from the desk they are sitting at.\nThe Domain Before we start putting our Mathematical Planning Model together, let’s create simple types to describe our domain. Based on the simple word description of our problem we already have four types: PersonId, TeamId, DeskId, and ClusterId. For the sake of simplicity, we are going to model all of these as single-case DUs with an int as the value.\ntype TeamId = TeamId of int type DeskId = DeskId of int type PersonId = PersonId of int type ClusterId = ClusterId of int I don’t have access to the original inquirers data set, so I need to create a synthetic data set of my own. I’ll start by creating a new System.Random and give it an initial seed value of 123 and define the number of teams, persons, clusters, and desks in my problem.\nlet rng = System.Random 123 let teamCount = 5 let personCount = 22 let clusterCount = 8 let deskCount = 30 Now I’ll create some arrays of my data.\nlet teamIds = [|1 .. teamCount|] | Array.map TeamId let personIds = [|1 .. personCount|] | Array.map PersonId let clusterIds = [|1 .. clusterCount|] | Array.map ClusterId let deskIds = [|1 .. deskCount|] | Array.map DeskId I need to separate the people into which team they belong to. F# has a handy function in the Array module which makes it easy to divide an array into even chunks called Array.splitInto. You give the splitInto function the number of chunks you want, and it evenly divides the input array into that many chunks. Let’s now divide the people into which team they belong to.\nlet teams = personIds | Array.splitInto teamIds.Length | Array.mapi (fun idx personIds - let teamId = teamIds[idx] teamId, personIds ) | readOnlyDict I now have a IReadOnlyDictionary which allows me to query which PersonId belong to a given TeamId.\nI also want to divide the desks into which clusters they belong to. I’ll use the same function as before to evenly divide them.\nlet clusters = deskIds | Array.splitInto clusterIds.Length | Array.mapi (fun idx desks - let clusterId = clusterIds[idx % clusterIds.Length] clusterId, Set desks // Notice I'm creating a Set  ) | readOnlyDict Now I have a IReadOnlyDictionary. I can look up a ClusterId and get a Set which contains all the DeskId that belong to that ClusterId. Notice, I put the DeskId into a Set, not an array. You will see why that matters later.\nLater in my problem I will need to lookup which ClusterId that a DeskId belongs to so I go ahead and create an IReadOnlyDictionary from the same data.\nlet deskToCluster = clusters | Seq.collect (fun (KeyValue (clusterId, deskIds)) - deskIds | Seq.map (fun deskId - deskId, clusterId)) | readOnlyDict Each PersonId is already assigned to a desk. Since I don’t have access to the real data, I’m just going to assign each PersonId to a random DeskId and store that in a array.\nlet currentPersonDeskAssignment = let randomDeskOrder = deskIds | Array.sortBy (fun _ - rng.NextDouble ()) randomDeskOrder[0 .. personIds.Length - 1] | Array.zip personIds The Model We now have a tiny domain and synthetic data. Let’s being building our model! We start with creating the decision variables which represent assigning a given PersonId to a particular DeskId. We will use a Boolean decision variable. A value of 1 will represent true. true means that we do assign a given PersonId to a given DeskId. A value of 0 represents false which means we do NOT assign a PersonId to a given DeskId. We store these decision variables in a SMap2 for easy slicing later.\nlet personDeskAssignment = DecisionBuilder \"PersonAssignment\" { for p in personIds do for d in deskIds - Boolean } | SMap2 We now create a decision variable which represents assigning a TeamId to a ClusterId. The decision variable will be a Boolean where 1 means we do assign the TeamId to the ClusterId and 0 means we do not. We store these decisions in a SMap2.\nlet teamClusterAssignment = DecisionBuilder \"TeamClusterAssignment\" { for t in teamIds do for c in clusterIds - Boolean } | SMap2 Alright, now we can start creating constraints. First thing we need to do is ensure that each PersonId is assigned to exactly 1 desk.\nlet eachPersonHasDeskConstraints = ConstraintBuilder \"EachPersonHasDesk\" { for p in personIds - sum personDeskAssignment[p, All] == 1.0 } Notice that the comparison is == and not . An == means that the sum MUST equal 1.0. If we had put , that would mean that the sum MAY equal 1.0 but it doesn’t have to. This would allow the optimization to not ensure that everyone has a spot. That’s not what we want though so we use == to ensure each PersonId will have a DeskId they are assigned to.\nNext, we make sure that each DeskId is only assigned once.\nlet eachDeskOnlyOnceConstraints = ConstraintBuilder \"EachDeskOnlyOnce\" { for d in deskIds - sum personDeskAssignment[All, d]  1.0 } Again, please notice the comparison that is being used here. Now we use  instead of ==. We are saying a DeskId MAY be assigned up to once, but no more. We are not requiring that each DeskId have a PersonId assigned to it. This is an important distinction.\nNow we want to make sure that each TeamId is assigned a ClusterId.\nlet eachTeamHasClusterConstraints = ConstraintBuilder \"EachTeamHasCluster\" { for t in teamIds - sum teamClusterAssignment[t, All] == 1.0 } Because we use == in the comparison we are ensuring that each TeamId is assigned a ClusterId.\nWe now must ensure that each ClusterId is assigned only once.\nlet eachClusterOnlyOnceConstraints = ConstraintBuilder \"EachClusterOnlyOnce\" { for c in clusterIds - sum teamClusterAssignment[All, c]  1.0 } We are using  which is saying that we may assign each ClusterId once but we don’t have to.\nTeam Co-Location Now we get to the slightly complex part. This is where the original enquirer was stuck, and I completely understand why. Everything up to this point has been straightforward. Now we need to quantify the success of teams sitting together. To do this we are going to use something called Indicator Variables. Indicator Variables are used to indicate whether a certain condition is being met in a model or not. We are doing to use them to model whether a given PersonId is sitting with their assigned TeamId.\nWe will need to create a set of indicator variables for each TeamId, ClusterId, and PersonId combination.\nlet personCoLocated = DecisionBuilder \"TeamCoLocated\" { for t in teamIds do for c in clusterIds do for p in teams[t] - Boolean } | SMap3 We now have an SMap3 which we will use to model whether a PersonId is sitting with their TeamId at a given ClusterId.\nYou may have noticed that our assignment decisions were along different dimensions. PersonId are assigned to DeskId while TeamId are assigned to ClusterId. Now is when we bring together the dimensions of DeskId and ClusterId.\nWe want to maximize the number of times that a PersonId is assigned to the same ClusterId as their TeamId. Our objective function is going to be the sum of the personCoLocated decisions. To keep the optimizer from just turning all those values to 1.0 though we need to put constraints on them to make sure the necessary conditions are being met.\nThe first necessary condition is that a PersonId is assigned to a DeskId in the given ClusterId. Let’s code that up.\nlet personCoLocatedConstraints = ConstraintBuilder \"TeamPersonCoLocated\" { for t in teamIds do for c in clusterIds do for p in teams[t] - personCoLocated[t, c, p]  sum personDeskAssignment[p, In clusters[c]] } Here we are saying that for the solver to turn a given personLocated decision to 1.0, at least one of the personDeskAssignment variables for the PersonId must be 1.0 as well. We are calculating that using this expression:\nsum personDeskAssignment[p, In clusters[c]] You’ll see that the filter on the second dimensions is an In filter. The In filter takes a Set as an input which is why we had to store the values in the cluster collection as a Set.\nNow we need to cover the second condition, the TeamId must also be assigned to the ClusterId.\nlet teamCoLocatedConstraints = ConstraintBuilder \"TeamCoLocated\" { for t in teamIds do for c in clusterIds do for p in teams[t] - personCoLocated[t, c, p]  teamClusterAssignment[t, c] } Here we are saying that if you want to turn the value of the personCoLocated decision to 1.0, you must have assigned the TeamId to that ClusterId.\nPutting it together We can now put together all the components of our model. Let’s create the LinearExpression which is our objective function.\nlet colocationObjectiveExpr = sum personCoLocated let coLocationObjective = Objective.create \"MaximizeCoLocation\" Maximize colocationObjectiveExpr We are saying that we want to maximize the number of times that a PersonId is assigned to the same ClusterId as the TeamId they are assigned to.\nWe have a secondary objective which is to minimize the number of times people are moved from their current seating assignment. To do this we create an expression which is the sum of whether a PersonId is assigned to the DeskId they are currently at.\nlet maxRetentionExpr = seq { for (p, d) in currentPersonDeskAssignment - 1.0 * personDeskAssignment[p, d] } | Seq.sum let maxRetentionObjective = Objective.create \"MaxRetention\" Maximize maxRetentionExpr With our two objectives and various constraints we can compose our full model.\nlet model = Model.create coLocationObjective | Model.addObjective maxRetentionObjective | Model.addConstraints eachPersonHasDeskConstraints | Model.addConstraints eachDeskOnlyOnceConstraints | Model.addConstraints eachTeamHasClusterConstraints | Model.addConstraints eachClusterOnlyOnceConstraints | Model.addConstraints personCoLocatedConstraints | Model.addConstraints teamCoLocatedConstraints We aren’t doing anything fancy so we will just use our default settings and attempt to solve.\nlet settings = Settings.basic let result = Solver.solve settings model Now let’s create a simple function to print out the results if we find a solution. This will just extract which assignments the solver is recommending we use and print that out to a simple table in the console.\nmatch result with | Optimal sln - let personDeskAssignmentValues = Solution.getValues sln personDeskAssignment let selectedDeskAssignments = personDeskAssignmentValues | Map.toSeq | Seq.filter (fun (_, value) - value = 1.0) | Seq.map fst | readOnlyDict let teamClusterAssignmentValues = Solution.getValues sln teamClusterAssignment let selectedTeamClusterAssignment = teamClusterAssignmentValues | Map.toSeq | Seq.filter (fun (_, value) - value = 1.0) | Seq.map fst printfn \"Team/Cluster Assignments\" for (teamId, clusterId) in selectedTeamClusterAssignment do printfn $\"{teamId}\" printfn $\"{clusterId}\" printfn \"=== People ===\" for personId in teams.[teamId] do let deskId = selectedDeskAssignments.[personId] let clusterId = deskToCluster[deskId] printfn $\"{personId} | {deskId} | {clusterId}\" | _ - printfn \"Uh Oh\" When we run all of this, we get the following result.\nTeam/Cluster Assignments\rTeamId 1\rClusterId 2\r=== People ===\rPersonId 1 | DeskId 5 | ClusterId 2\rPersonId 2 | DeskId 4 | ClusterId 1\rPersonId 3 | DeskId 7 | ClusterId 2\rPersonId 4 | DeskId 8 | ClusterId 2\rPersonId 5 | DeskId 6 | ClusterId 2\rTeamId 2\rClusterId 4\r=== People ===\rPersonId 6 | DeskId 15 | ClusterId 4\rPersonId 7 | DeskId 14 | ClusterId 4\rPersonId 8 | DeskId 16 | ClusterId 4\rPersonId 9 | DeskId 1 | ClusterId 1\rPersonId 10 | DeskId 13 | ClusterId 4\rTeamId 3\rClusterId 3\r=== People ===\rPersonId 11 | DeskId 9 | ClusterId 3\rPersonId 12 | DeskId 10 | ClusterId 3\rPersonId 13 | DeskId 11 | ClusterId 3\rPersonId 14 | DeskId 12 | ClusterId 3\rTeamId 4\rClusterId 5\r=== People ===\rPersonId 15 | DeskId 20 | ClusterId 5\rPersonId 16 | DeskId 17 | ClusterId 5\rPersonId 17 | DeskId 19 | ClusterId 5\rPersonId 18 | DeskId 18 | ClusterId 5\rTeamId 5\rClusterId 6\r=== People ===\rPersonId 19 | DeskId 23 | ClusterId 6\rPersonId 20 | DeskId 24 | ClusterId 6\rPersonId 21 | DeskId 22 | ClusterId 6\rPersonId 22 | DeskId 21 | ClusterId 6\rYou will see that in most cases people are sitting with their teams but in some cases they are not. This is a product of a mismatch between the number of people on each team and the number of desks in each cluster. You can play with this model yourself here. Change the variables and see what results you get!\nThis was a fun problem to put together and I was grateful for the question. If you have a question about how Mathematica Planning, please send me an email at matthewcrews@gmail.com or connect with met on Twitter.\n",
+  "wordCount" : "2261",
+  "inLanguage": "en",
+  "datePublished": "2021-11-21T00:00:00Z",
+  "dateModified": "2021-11-21T00:00:00Z",
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "https://matthewcrews.com/blog/2021/11/team-desk-assignments/"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Matthew Crews",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://matthewcrews.com/favicon.ico"
+    }
+  }
+}
+</script>
+
+
+
+</head>
+
+<body class="" id="top">
+<script>
+    if (localStorage.getItem("pref-theme") === "dark") {
+        document.body.classList.add('dark');
+    } else if (localStorage.getItem("pref-theme") === "light") {
+        document.body.classList.remove('dark')
+    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.body.classList.add('dark');
+    }
+
+</script>
+<noscript>
+    <style type="text/css">
+        .theme-toggle,
+        .top-link {
+            display: none;
+        }
+
+    </style>
+</noscript>
+<header class="header">
+    <nav class="nav">
+        <div class="logo">
+            <a href="https://matthewcrews.com" accesskey="h" title="Matthew Crews (Alt + H)">Matthew Crews</a>
+            <span class="logo-switches">
+                <span class="theme-toggle" title="(Alt + T)">
+                    <a id="theme-toggle" accesskey="t">
+                        <svg id="moon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                        <svg id="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                            stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                    </a>
+                </span>
+                
+            </span>
+        </div>
+        <ul class="menu" id="menu" onscroll="menu_on_scroll()">
+            <li>
+                <a href="https://matthewcrews.com/about" title="About">
+                    <span>About</span>
+                </a>
+            </li>
+            <li>
+                <a href="https://matthewcrews.com/consulting" title="Consulting">
+                    <span>Consulting</span>
+                </a>
+            </li></ul>
+    </nav>
+</header>
+
+    <main class="main">
+
+<article class="post-single">
+  <header class="post-header">
+    <h1 class="post-title">
+      Team Desk Assignments
+    </h1>
+    <div class="post-description">
+      
+    </div>
+    <div class="post-meta">November 21, 2021
+
+    </div>
+  </header> 
+
+  <div class="post-content">
+<p>I was recently asked a question on the <a href="https://github.com/fslaborg/flips/issues/180">Flips GitHub page</a> which I felt warranted a full blog post. It is an interesting problem that I have seen several variations on so wanted to provide a more detailed model. The largest example of this problem I saw at Rocket Technology (formerly Quicken Loans) where they must assign desks to thousands of people across several buildings across downtown Detroit, MI.</p>
+<p>You have a set of People that you need to assign desks to. Each person is a part of a Team, and you would rather that people sat with their Team. Each Desk is a part of a Cluster. A Cluster is a group of desks that are next to each other. Each Person is already assigned to a Desk. You want to come up with a seating assignment that maximizes the number of people who are sitting with their time while also minimizing the number of times that people must move from the desk they are sitting at.</p>
+<h2 id="the-domain">The Domain<a hidden class="anchor" aria-hidden="true" href="#the-domain">#</a></h2>
+<p>Before we start putting our Mathematical Planning Model together, let&rsquo;s create simple types to describe our domain. Based on the simple word description of our problem we already have four types: <code>PersonId</code>, <code>TeamId</code>, <code>DeskId</code>, and <code>ClusterId</code>. For the sake of simplicity, we are going to model all of these as single-case DUs with an <code>int</code> as the value.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">type</span> <span style="color:#a6e22e">TeamId</span> <span style="color:#f92672">=</span> TeamId <span style="color:#66d9ef">of</span> int
+<span style="color:#66d9ef">type</span> <span style="color:#a6e22e">DeskId</span> <span style="color:#f92672">=</span> DeskId <span style="color:#66d9ef">of</span> int
+<span style="color:#66d9ef">type</span> <span style="color:#a6e22e">PersonId</span> <span style="color:#f92672">=</span> PersonId <span style="color:#66d9ef">of</span> int
+<span style="color:#66d9ef">type</span> <span style="color:#a6e22e">ClusterId</span> <span style="color:#f92672">=</span> ClusterId <span style="color:#66d9ef">of</span> int
+</code></pre></div><p>I don&rsquo;t have access to the original inquirers data set, so I need to create a synthetic data set of my own. I&rsquo;ll start by creating a new <code>System.Random</code> and give it an initial seed value of <code>123</code> and define the number of teams, persons, clusters, and desks in my problem.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> rng <span style="color:#f92672">=</span> System.Random 123
+<span style="color:#66d9ef">let</span> teamCount <span style="color:#f92672">=</span> 5
+<span style="color:#66d9ef">let</span> personCount <span style="color:#f92672">=</span> 22
+<span style="color:#66d9ef">let</span> clusterCount <span style="color:#f92672">=</span> 8
+<span style="color:#66d9ef">let</span> deskCount <span style="color:#f92672">=</span> 30
+</code></pre></div><p>Now I&rsquo;ll create some arrays of my data.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> teamIds <span style="color:#f92672">=</span>
+    <span style="color:#f92672">[|</span>1 <span style="color:#f92672">..</span> teamCount<span style="color:#f92672">|]</span>
+    <span style="color:#f92672">|&gt;</span> Array.map TeamId
+
+<span style="color:#66d9ef">let</span> personIds <span style="color:#f92672">=</span>
+    <span style="color:#f92672">[|</span>1 <span style="color:#f92672">..</span> personCount<span style="color:#f92672">|]</span>
+    <span style="color:#f92672">|&gt;</span> Array.map PersonId
+
+<span style="color:#66d9ef">let</span> clusterIds <span style="color:#f92672">=</span>
+    <span style="color:#f92672">[|</span>1 <span style="color:#f92672">..</span> clusterCount<span style="color:#f92672">|]</span>
+    <span style="color:#f92672">|&gt;</span> Array.map ClusterId
+
+<span style="color:#66d9ef">let</span> deskIds <span style="color:#f92672">=</span>
+    <span style="color:#f92672">[|</span>1 <span style="color:#f92672">..</span> deskCount<span style="color:#f92672">|]</span>
+    <span style="color:#f92672">|&gt;</span> Array.map DeskId
+</code></pre></div><p>I need to separate the people into which team they belong to. F# has a handy function in the <code>Array</code> module which makes it easy to divide an array into even chunks called <code>Array.splitInto</code>. You give the <code>splitInto</code> function the number of chunks you want, and it evenly divides the input array into that many chunks. Let&rsquo;s now divide the people into which team they belong to.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> teams <span style="color:#f92672">=</span>
+    personIds
+    <span style="color:#f92672">|&gt;</span> Array.splitInto teamIds<span style="color:#f92672">.</span>Length
+    <span style="color:#f92672">|&gt;</span> Array.mapi <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> idx personIds <span style="color:#f92672">-&gt;</span>
+        <span style="color:#66d9ef">let</span> teamId <span style="color:#f92672">=</span> teamIds<span style="color:#f92672">[</span>idx<span style="color:#f92672">]</span>
+        teamId<span style="color:#f92672">,</span> personIds
+    <span style="color:#f92672">)</span> <span style="color:#f92672">|&gt;</span> readOnlyDict
+</code></pre></div><p>I now have a <code>IReadOnlyDictionary&lt;TeamId, array&lt;PersonId&gt;&gt;</code> which allows me to query which <code>PersonId</code> belong to a given <code>TeamId</code>.</p>
+<p>I also want to divide the desks into which clusters they belong to. I&rsquo;ll use the same function as before to evenly divide them.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> clusters <span style="color:#f92672">=</span>
+    deskIds
+    <span style="color:#f92672">|&gt;</span> Array.splitInto clusterIds<span style="color:#f92672">.</span>Length
+    <span style="color:#f92672">|&gt;</span> Array.mapi <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> idx desks <span style="color:#f92672">-&gt;</span>
+        <span style="color:#66d9ef">let</span> clusterId <span style="color:#f92672">=</span> clusterIds<span style="color:#f92672">[</span>idx <span style="color:#f92672">%</span> clusterIds<span style="color:#f92672">.</span>Length<span style="color:#f92672">]</span>
+        clusterId<span style="color:#f92672">,</span> Set desks <span style="color:#75715e">// Notice I&#39;m creating a Set&lt;DeskId&gt;
+</span><span style="color:#75715e"></span>    <span style="color:#f92672">)</span> <span style="color:#f92672">|&gt;</span> readOnlyDict
+</code></pre></div><p>Now I have a <code>IReadOnlyDictionary&lt;ClusterId, Set&lt;DeskId&gt;&gt;</code>. I can look up a <code>ClusterId</code> and get a <code>Set</code> which contains all the <code>DeskId</code> that belong to that <code>ClusterId</code>. Notice, I put the <code>DeskId</code> into a <code>Set</code>, not an <code>array</code>. You will see why that matters later.</p>
+<p>Later in my problem I will need to lookup which <code>ClusterId</code> that a <code>DeskId</code> belongs to so I go ahead and create an <code>IReadOnlyDictionary&lt;DeskId, ClusterId&gt;</code> from the same data.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> deskToCluster <span style="color:#f92672">=</span>
+    clusters
+    <span style="color:#f92672">|&gt;</span> Seq.collect <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> <span style="color:#f92672">(</span>KeyValue <span style="color:#f92672">(</span>clusterId<span style="color:#f92672">,</span> deskIds<span style="color:#f92672">))</span> <span style="color:#f92672">-&gt;</span> 
+        deskIds 
+        <span style="color:#f92672">|&gt;</span> Seq.map <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> deskId <span style="color:#f92672">-&gt;</span> 
+            deskId<span style="color:#f92672">,</span> clusterId<span style="color:#f92672">))</span>
+    <span style="color:#f92672">|&gt;</span> readOnlyDict
+</code></pre></div><p>Each <code>PersonId</code> is already assigned to a desk. Since I don&rsquo;t have access to the real data, I&rsquo;m just going to assign each <code>PersonId</code> to a random <code>DeskId</code> and store that in a <code>array&lt;PersonId * DeskId&gt;</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> currentPersonDeskAssignment <span style="color:#f92672">=</span>
+
+    <span style="color:#66d9ef">let</span> randomDeskOrder <span style="color:#f92672">=</span>
+        deskIds
+        <span style="color:#f92672">|&gt;</span> Array.sortBy <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> <span style="color:#f92672">_</span> <span style="color:#f92672">-&gt;</span> rng<span style="color:#f92672">.</span>NextDouble ()<span style="color:#f92672">)</span>
+
+    randomDeskOrder<span style="color:#f92672">[</span>0 <span style="color:#f92672">..</span> personIds<span style="color:#f92672">.</span>Length <span style="color:#f92672">-</span> 1<span style="color:#f92672">]</span>
+    <span style="color:#f92672">|&gt;</span> Array.zip personIds
+</code></pre></div><h2 id="the-model">The Model<a hidden class="anchor" aria-hidden="true" href="#the-model">#</a></h2>
+<p>We now have a tiny domain and synthetic data. Let&rsquo;s being building our model! We start with creating the decision variables which represent assigning a given <code>PersonId</code> to a particular <code>DeskId</code>. We will use a <code>Boolean</code> decision variable. A value of <code>1</code> will represent <code>true</code>. <code>true</code> means that we do assign a given <code>PersonId</code> to a given <code>DeskId</code>. A value of <code>0</code> represents <code>false</code> which means we do NOT assign a <code>PersonId</code> to a given <code>DeskId</code>. We store these decision variables in a <code>SMap2&lt;PersonId, DeskId, Decision&gt;</code> for easy slicing later.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> personDeskAssignment <span style="color:#f92672">=</span>
+    DecisionBuilder <span style="color:#e6db74">&#34;PersonAssignment&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> p <span style="color:#66d9ef">in</span> personIds <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> d <span style="color:#66d9ef">in</span> deskIds <span style="color:#f92672">-&gt;</span>
+            Boolean
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> SMap2
+</code></pre></div><p>We now create a decision variable which represents assigning a <code>TeamId</code> to a <code>ClusterId</code>. The decision variable will be a <code>Boolean</code> where <code>1</code> means we do assign the <code>TeamId</code> to the <code>ClusterId</code> and <code>0</code> means we do not. We store these decisions in a <code>SMap2&lt;TeamId, ClusterId, Decision&gt;</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> teamClusterAssignment <span style="color:#f92672">=</span>
+    DecisionBuilder <span style="color:#e6db74">&#34;TeamClusterAssignment&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> t <span style="color:#66d9ef">in</span> teamIds <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> c <span style="color:#66d9ef">in</span> clusterIds <span style="color:#f92672">-&gt;</span>
+            Boolean
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> SMap2
+</code></pre></div><p>Alright, now we can start creating constraints. First thing we need to do is ensure that each <code>PersonId</code> is assigned to exactly <code>1</code> desk.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> eachPersonHasDeskConstraints <span style="color:#f92672">=</span>
+    ConstraintBuilder <span style="color:#e6db74">&#34;EachPersonHasDesk&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> p <span style="color:#66d9ef">in</span> personIds <span style="color:#f92672">-&gt;</span>
+            sum personDeskAssignment<span style="color:#f92672">[</span>p<span style="color:#f92672">,</span>  All<span style="color:#f92672">]</span> <span style="color:#f92672">==</span> 1<span style="color:#f92672">.</span>0
+    <span style="color:#f92672">}</span>
+</code></pre></div><p>Notice that the comparison is <code>==</code> and not <code>&lt;==</code>. An <code>==</code> means that the sum MUST equal <code>1.0</code>. If we had put <code>&lt;==</code>, that would mean that the sum MAY equal <code>1.0</code> but it doesn&rsquo;t have to. This would allow the optimization to not ensure that everyone has a spot. That&rsquo;s not what we want though so we use <code>==</code> to ensure each <code>PersonId</code> will have a <code>DeskId</code> they are assigned to.</p>
+<p>Next, we make sure that each <code>DeskId</code> is only assigned once.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> eachDeskOnlyOnceConstraints <span style="color:#f92672">=</span>
+    ConstraintBuilder <span style="color:#e6db74">&#34;EachDeskOnlyOnce&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> d <span style="color:#66d9ef">in</span> deskIds <span style="color:#f92672">-&gt;</span>
+            sum personDeskAssignment<span style="color:#f92672">[</span>All<span style="color:#f92672">,</span> d<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;==</span> 1<span style="color:#f92672">.</span>0
+    <span style="color:#f92672">}</span>
+</code></pre></div><p>Again, please notice the comparison that is being used here. Now we use <code>&lt;==</code> instead of <code>==</code>. We are saying a <code>DeskId</code> MAY be assigned up to once, but no more. We are not requiring that each <code>DeskId</code> have a <code>PersonId</code> assigned to it. This is an important distinction.</p>
+<p>Now we want to make sure that each <code>TeamId</code> is assigned a <code>ClusterId</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> eachTeamHasClusterConstraints <span style="color:#f92672">=</span>
+    ConstraintBuilder <span style="color:#e6db74">&#34;EachTeamHasCluster&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> t <span style="color:#66d9ef">in</span> teamIds <span style="color:#f92672">-&gt;</span>
+            sum teamClusterAssignment<span style="color:#f92672">[</span>t<span style="color:#f92672">,</span> All<span style="color:#f92672">]</span> <span style="color:#f92672">==</span> 1<span style="color:#f92672">.</span>0
+    <span style="color:#f92672">}</span>
+</code></pre></div><p>Because we use <code>==</code> in the comparison we are ensuring that each <code>TeamId</code> is assigned a <code>ClusterId</code>.</p>
+<p>We now must ensure that each <code>ClusterId</code> is assigned only once.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> eachClusterOnlyOnceConstraints <span style="color:#f92672">=</span>
+    ConstraintBuilder <span style="color:#e6db74">&#34;EachClusterOnlyOnce&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> c <span style="color:#66d9ef">in</span> clusterIds <span style="color:#f92672">-&gt;</span>
+            sum teamClusterAssignment<span style="color:#f92672">[</span>All<span style="color:#f92672">,</span> c<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;==</span> 1<span style="color:#f92672">.</span>0
+    <span style="color:#f92672">}</span>
+</code></pre></div><p>We are using <code>&lt;==</code> which is saying that we may assign each <code>ClusterId</code> once but we don&rsquo;t have to.</p>
+<h3 id="team-co-location">Team Co-Location<a hidden class="anchor" aria-hidden="true" href="#team-co-location">#</a></h3>
+<p>Now we get to the slightly complex part. This is where the original enquirer was stuck, and I completely understand why. Everything up to this point has been straightforward. Now we need to quantify the success of teams sitting together. To do this we are going to use something called Indicator Variables. Indicator Variables are used to indicate whether a certain condition is being met in a model or not. We are doing to use them to model whether a given <code>PersonId</code> is sitting with their assigned <code>TeamId</code>.</p>
+<p>We will need to create a set of indicator variables for each <code>TeamId</code>, <code>ClusterId</code>, and <code>PersonId</code> combination.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> personCoLocated <span style="color:#f92672">=</span>
+    DecisionBuilder <span style="color:#e6db74">&#34;TeamCoLocated&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> t <span style="color:#66d9ef">in</span> teamIds <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> c <span style="color:#66d9ef">in</span> clusterIds <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> p <span style="color:#66d9ef">in</span> teams<span style="color:#f92672">[</span>t<span style="color:#f92672">]</span> <span style="color:#f92672">-&gt;</span>
+            Boolean
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> SMap3
+</code></pre></div><p>We now have an <code>SMap3&lt;TeamId, ClusterId, PersonId, Decision&gt;</code> which we will use to model whether a <code>PersonId</code> is sitting with their <code>TeamId</code> at a given <code>ClusterId</code>.</p>
+<p>You may have noticed that our assignment decisions were along different dimensions. <code>PersonId</code> are assigned to <code>DeskId</code> while <code>TeamId</code> are assigned to <code>ClusterId</code>. Now is when we bring together the dimensions of <code>DeskId</code> and <code>ClusterId</code>.</p>
+<p>We want to maximize the number of times that a <code>PersonId</code> is assigned to the same <code>ClusterId</code> as their <code>TeamId</code>. Our objective function is going to be the sum of the <code>personCoLocated</code> decisions. To keep the optimizer from just turning all those values to <code>1.0</code> though we need to put constraints on them to make sure the necessary conditions are being met.</p>
+<p>The first necessary condition is that a <code>PersonId</code> is assigned to a <code>DeskId</code> in the given <code>ClusterId</code>. Let&rsquo;s code that up.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> personCoLocatedConstraints <span style="color:#f92672">=</span>
+    ConstraintBuilder <span style="color:#e6db74">&#34;TeamPersonCoLocated&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> t <span style="color:#66d9ef">in</span> teamIds <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> c <span style="color:#66d9ef">in</span> clusterIds <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> p <span style="color:#66d9ef">in</span> teams<span style="color:#f92672">[</span>t<span style="color:#f92672">]</span> <span style="color:#f92672">-&gt;</span>
+            personCoLocated<span style="color:#f92672">[</span>t<span style="color:#f92672">,</span> c<span style="color:#f92672">,</span> p<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;==</span> sum personDeskAssignment<span style="color:#f92672">[</span>p<span style="color:#f92672">,</span> In clusters<span style="color:#f92672">[</span>c<span style="color:#f92672">]]</span>
+    <span style="color:#f92672">}</span>
+</code></pre></div><p>Here we are saying that for the solver to turn a given <code>personLocated</code> decision to <code>1.0</code>, at least one of the <code>personDeskAssignment</code> variables for the <code>PersonId</code> must be <code>1.0</code> as well. We are calculating that using this expression:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp">sum personDeskAssignment<span style="color:#f92672">[</span>p<span style="color:#f92672">,</span> In clusters<span style="color:#f92672">[</span>c<span style="color:#f92672">]]</span>
+</code></pre></div><p>You&rsquo;ll see that the filter on the second dimensions is an <code>In</code> filter. The <code>In</code> filter takes a <code>Set</code> as an input which is why we had to store the values in the <code>cluster</code> collection as a <code>Set&lt;DeskId&gt;</code>.</p>
+<p>Now we need to cover the second condition, the <code>TeamId</code> must also be assigned to the <code>ClusterId</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> teamCoLocatedConstraints <span style="color:#f92672">=</span>
+    ConstraintBuilder <span style="color:#e6db74">&#34;TeamCoLocated&#34;</span> <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> t <span style="color:#66d9ef">in</span> teamIds <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> c <span style="color:#66d9ef">in</span> clusterIds <span style="color:#66d9ef">do</span>
+        <span style="color:#66d9ef">for</span> p <span style="color:#66d9ef">in</span> teams<span style="color:#f92672">[</span>t<span style="color:#f92672">]</span> <span style="color:#f92672">-&gt;</span>
+            personCoLocated<span style="color:#f92672">[</span>t<span style="color:#f92672">,</span> c<span style="color:#f92672">,</span> p<span style="color:#f92672">]</span> <span style="color:#f92672">&lt;==</span> teamClusterAssignment<span style="color:#f92672">[</span>t<span style="color:#f92672">,</span> c<span style="color:#f92672">]</span>
+    <span style="color:#f92672">}</span>
+</code></pre></div><p>Here we are saying that if you want to turn the value of the <code>personCoLocated</code> decision to <code>1.0</code>, you must have assigned the <code>TeamId</code> to that <code>ClusterId</code>.</p>
+<h2 id="putting-it-together">Putting it together<a hidden class="anchor" aria-hidden="true" href="#putting-it-together">#</a></h2>
+<p>We can now put together all the components of our model. Let&rsquo;s create the <code>LinearExpression</code> which is our objective function.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> colocationObjectiveExpr <span style="color:#f92672">=</span> sum personCoLocated
+
+<span style="color:#66d9ef">let</span> coLocationObjective <span style="color:#f92672">=</span>
+    Objective.create <span style="color:#e6db74">&#34;MaximizeCoLocation&#34;</span> Maximize colocationObjectiveExpr
+</code></pre></div><p>We are saying that we want to maximize the number of times that a <code>PersonId</code> is assigned to the same <code>ClusterId</code> as the <code>TeamId</code> they are assigned to.</p>
+<p>We have a secondary objective which is to minimize the number of times people are moved from their current seating assignment. To do this we create an expression which is the sum of whether a <code>PersonId</code> is assigned to the <code>DeskId</code> they are currently at.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> maxRetentionExpr <span style="color:#f92672">=</span>
+    seq <span style="color:#f92672">{</span>
+        <span style="color:#66d9ef">for</span> <span style="color:#f92672">(</span>p<span style="color:#f92672">,</span> d<span style="color:#f92672">)</span> <span style="color:#66d9ef">in</span> currentPersonDeskAssignment <span style="color:#f92672">-&gt;</span>
+            1<span style="color:#f92672">.</span>0 <span style="color:#f92672">*</span> personDeskAssignment<span style="color:#f92672">[</span>p<span style="color:#f92672">,</span> d<span style="color:#f92672">]</span>
+    <span style="color:#f92672">}</span> <span style="color:#f92672">|&gt;</span> Seq.sum
+
+<span style="color:#66d9ef">let</span> maxRetentionObjective <span style="color:#f92672">=</span>
+    Objective.create <span style="color:#e6db74">&#34;MaxRetention&#34;</span> Maximize maxRetentionExpr
+</code></pre></div><p>With our two objectives and various constraints we can compose our full model.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> model <span style="color:#f92672">=</span>
+    Model.create coLocationObjective
+    <span style="color:#f92672">|&gt;</span> Model.addObjective maxRetentionObjective
+    <span style="color:#f92672">|&gt;</span> Model.addConstraints eachPersonHasDeskConstraints
+    <span style="color:#f92672">|&gt;</span> Model.addConstraints eachDeskOnlyOnceConstraints
+    <span style="color:#f92672">|&gt;</span> Model.addConstraints eachTeamHasClusterConstraints
+    <span style="color:#f92672">|&gt;</span> Model.addConstraints eachClusterOnlyOnceConstraints
+    <span style="color:#f92672">|&gt;</span> Model.addConstraints personCoLocatedConstraints
+    <span style="color:#f92672">|&gt;</span> Model.addConstraints teamCoLocatedConstraints
+</code></pre></div><p>We aren&rsquo;t doing anything fancy so we will just use our default settings and attempt to solve.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">let</span> settings <span style="color:#f92672">=</span> Settings.basic
+
+<span style="color:#66d9ef">let</span> result <span style="color:#f92672">=</span> Solver.solve settings model
+</code></pre></div><p>Now let&rsquo;s create a simple function to print out the results if we find a solution. This will just extract which assignments the solver is recommending we use and print that out to a simple table in the console.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-fsharp" data-lang="fsharp"><span style="color:#66d9ef">match</span> result <span style="color:#66d9ef">with</span>
+<span style="color:#f92672">|</span> Optimal sln <span style="color:#f92672">-&gt;</span>
+
+    <span style="color:#66d9ef">let</span> personDeskAssignmentValues <span style="color:#f92672">=</span> Solution.getValues sln personDeskAssignment
+
+    <span style="color:#66d9ef">let</span> selectedDeskAssignments <span style="color:#f92672">=</span>
+        personDeskAssignmentValues
+        <span style="color:#f92672">|&gt;</span> Map.toSeq
+        <span style="color:#f92672">|&gt;</span> Seq.filter <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> <span style="color:#f92672">(_,</span> value<span style="color:#f92672">)</span> <span style="color:#f92672">-&gt;</span> value <span style="color:#f92672">=</span> 1<span style="color:#f92672">.</span>0<span style="color:#f92672">)</span>
+        <span style="color:#f92672">|&gt;</span> Seq.map fst
+        <span style="color:#f92672">|&gt;</span> readOnlyDict
+
+
+    <span style="color:#66d9ef">let</span> teamClusterAssignmentValues <span style="color:#f92672">=</span> Solution.getValues sln teamClusterAssignment
+
+    <span style="color:#66d9ef">let</span> selectedTeamClusterAssignment <span style="color:#f92672">=</span>
+        teamClusterAssignmentValues
+        <span style="color:#f92672">|&gt;</span> Map.toSeq
+        <span style="color:#f92672">|&gt;</span> Seq.filter <span style="color:#f92672">(</span><span style="color:#66d9ef">fun</span> <span style="color:#f92672">(_,</span> value<span style="color:#f92672">)</span> <span style="color:#f92672">-&gt;</span> value <span style="color:#f92672">=</span> 1<span style="color:#f92672">.</span>0<span style="color:#f92672">)</span>
+        <span style="color:#f92672">|&gt;</span> Seq.map fst
+
+    printfn <span style="color:#e6db74">&#34;Team/Cluster Assignments&#34;</span>
+    <span style="color:#66d9ef">for</span> <span style="color:#f92672">(</span>teamId<span style="color:#f92672">,</span> clusterId<span style="color:#f92672">)</span> <span style="color:#66d9ef">in</span> selectedTeamClusterAssignment <span style="color:#66d9ef">do</span>
+        printfn <span style="color:#f92672">$</span><span style="color:#e6db74">&#34;{teamId}&#34;</span>
+        printfn <span style="color:#f92672">$</span><span style="color:#e6db74">&#34;{clusterId}&#34;</span>
+        printfn <span style="color:#e6db74">&#34;=== People ===&#34;</span>
+
+        <span style="color:#66d9ef">for</span> personId <span style="color:#66d9ef">in</span> teams<span style="color:#f92672">.[</span>teamId<span style="color:#f92672">]</span> <span style="color:#66d9ef">do</span>
+            <span style="color:#66d9ef">let</span> deskId <span style="color:#f92672">=</span> selectedDeskAssignments<span style="color:#f92672">.[</span>personId<span style="color:#f92672">]</span>
+            <span style="color:#66d9ef">let</span> clusterId <span style="color:#f92672">=</span> deskToCluster<span style="color:#f92672">[</span>deskId<span style="color:#f92672">]</span>
+            printfn <span style="color:#f92672">$</span><span style="color:#e6db74">&#34;{personId} | {deskId} | {clusterId}&#34;</span>
+
+
+<span style="color:#f92672">|</span> <span style="color:#f92672">_</span> <span style="color:#f92672">-&gt;</span> printfn <span style="color:#e6db74">&#34;Uh Oh&#34;</span>
+</code></pre></div><p>When we run all of this, we get the following result.</p>
+<pre><code class="language-terminal" data-lang="terminal">Team/Cluster Assignments
+TeamId 1
+ClusterId 2
+=== People ===
+PersonId 1 | DeskId 5 | ClusterId 2
+PersonId 2 | DeskId 4 | ClusterId 1
+PersonId 3 | DeskId 7 | ClusterId 2
+PersonId 4 | DeskId 8 | ClusterId 2
+PersonId 5 | DeskId 6 | ClusterId 2
+TeamId 2
+ClusterId 4
+=== People ===
+PersonId 6 | DeskId 15 | ClusterId 4
+PersonId 7 | DeskId 14 | ClusterId 4
+PersonId 8 | DeskId 16 | ClusterId 4
+PersonId 9 | DeskId 1 | ClusterId 1
+PersonId 10 | DeskId 13 | ClusterId 4
+TeamId 3
+ClusterId 3
+=== People ===
+PersonId 11 | DeskId 9 | ClusterId 3
+PersonId 12 | DeskId 10 | ClusterId 3
+PersonId 13 | DeskId 11 | ClusterId 3
+PersonId 14 | DeskId 12 | ClusterId 3
+TeamId 4
+ClusterId 5
+=== People ===
+PersonId 15 | DeskId 20 | ClusterId 5
+PersonId 16 | DeskId 17 | ClusterId 5
+PersonId 17 | DeskId 19 | ClusterId 5
+PersonId 18 | DeskId 18 | ClusterId 5
+TeamId 5
+ClusterId 6
+=== People ===
+PersonId 19 | DeskId 23 | ClusterId 6
+PersonId 20 | DeskId 24 | ClusterId 6
+PersonId 21 | DeskId 22 | ClusterId 6
+PersonId 22 | DeskId 21 | ClusterId 6
+</code></pre><p>You will see that in most cases people are sitting with their teams but in some cases they are not. This is a product of a mismatch between the number of people on each team and the number of desks in each cluster. You can play with this model yourself <a href="TeamDeskAssignments.fsx">here</a>. Change the variables and see what results you get!</p>
+<p>This was a fun problem to put together and I was grateful for the question. If you have a question about how Mathematica Planning, please send me an email at <a href="mailto:matthewcrews@gmail.com">matthewcrews@gmail.com</a> or connect with met on <a href="https://twitter.com/McCrews">Twitter</a>.</p>
+
+</div>
+  <footer class="post-footer">
+
+
+
+<div class="share-buttons">
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Team Desk Assignments on twitter"
+        href="https://twitter.com/intent/tweet/?text=Team%20Desk%20Assignments&amp;url=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2fteam-desk-assignments%2f&amp;hashtags=">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-253.927,424.544c135.939,0 210.268,-112.643 210.268,-210.268c0,-3.218 0,-6.437 -0.153,-9.502c14.406,-10.421 26.973,-23.448 36.935,-38.314c-13.18,5.824 -27.433,9.809 -42.452,11.648c15.326,-9.196 26.973,-23.602 32.49,-40.92c-14.252,8.429 -30.038,14.56 -46.896,17.931c-13.487,-14.406 -32.644,-23.295 -53.946,-23.295c-40.767,0 -73.87,33.104 -73.87,73.87c0,5.824 0.613,11.494 1.992,16.858c-61.456,-3.065 -115.862,-32.49 -152.337,-77.241c-6.284,10.881 -9.962,23.601 -9.962,37.088c0,25.594 13.027,48.276 32.95,61.456c-12.107,-0.307 -23.448,-3.678 -33.41,-9.196l0,0.92c0,35.862 25.441,65.594 59.311,72.49c-6.13,1.686 -12.72,2.606 -19.464,2.606c-4.751,0 -9.348,-0.46 -13.946,-1.38c9.349,29.426 36.628,50.728 68.965,51.341c-25.287,19.771 -57.164,31.571 -91.8,31.571c-5.977,0 -11.801,-0.306 -17.625,-1.073c32.337,21.15 71.264,33.41 112.95,33.41Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Team Desk Assignments on linkedin"
+        href="https://www.linkedin.com/shareArticle?mini=true&amp;url=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2fteam-desk-assignments%2f&amp;title=Team%20Desk%20Assignments&amp;summary=Team%20Desk%20Assignments&amp;source=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2fteam-desk-assignments%2f">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-288.985,423.278l0,-225.717l-75.04,0l0,225.717l75.04,0Zm270.539,0l0,-129.439c0,-69.333 -37.018,-101.586 -86.381,-101.586c-39.804,0 -57.634,21.891 -67.617,37.266l0,-31.958l-75.021,0c0.995,21.181 0,225.717 0,225.717l75.02,0l0,-126.056c0,-6.748 0.486,-13.492 2.474,-18.315c5.414,-13.475 17.767,-27.434 38.494,-27.434c27.135,0 38.007,20.707 38.007,51.037l0,120.768l75.024,0Zm-307.552,-334.556c-25.674,0 -42.448,16.879 -42.448,39.002c0,21.658 16.264,39.002 41.455,39.002l0.484,0c26.165,0 42.452,-17.344 42.452,-39.002c-0.485,-22.092 -16.241,-38.954 -41.943,-39.002Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Team Desk Assignments on reddit"
+        href="https://reddit.com/submit?url=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2fteam-desk-assignments%2f&title=Team%20Desk%20Assignments">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-3.446,265.638c0,-22.964 -18.616,-41.58 -41.58,-41.58c-11.211,0 -21.361,4.457 -28.841,11.666c-28.424,-20.508 -67.586,-33.757 -111.204,-35.278l18.941,-89.121l61.884,13.157c0.756,15.734 13.642,28.29 29.56,28.29c16.407,0 29.706,-13.299 29.706,-29.701c0,-16.403 -13.299,-29.702 -29.706,-29.702c-11.666,0 -21.657,6.792 -26.515,16.578l-69.105,-14.69c-1.922,-0.418 -3.939,-0.042 -5.585,1.036c-1.658,1.073 -2.811,2.761 -3.224,4.686l-21.152,99.438c-44.258,1.228 -84.046,14.494 -112.837,35.232c-7.468,-7.164 -17.589,-11.591 -28.757,-11.591c-22.965,0 -41.585,18.616 -41.585,41.58c0,16.896 10.095,31.41 24.568,37.918c-0.639,4.135 -0.99,8.328 -0.99,12.576c0,63.977 74.469,115.836 166.33,115.836c91.861,0 166.334,-51.859 166.334,-115.836c0,-4.218 -0.347,-8.387 -0.977,-12.493c14.564,-6.47 24.735,-21.034 24.735,-38.001Zm-119.474,108.193c-20.27,20.241 -59.115,21.816 -70.534,21.816c-11.428,0 -50.277,-1.575 -70.522,-21.82c-3.007,-3.008 -3.007,-7.882 0,-10.889c3.003,-2.999 7.882,-3.003 10.885,0c12.777,12.781 40.11,17.317 59.637,17.317c19.522,0 46.86,-4.536 59.657,-17.321c3.016,-2.999 7.886,-2.995 10.885,0.008c3.008,3.011 3.003,7.882 -0.008,10.889Zm-5.23,-48.781c-16.373,0 -29.701,-13.324 -29.701,-29.698c0,-16.381 13.328,-29.714 29.701,-29.714c16.378,0 29.706,13.333 29.706,29.714c0,16.374 -13.328,29.698 -29.706,29.698Zm-160.386,-29.702c0,-16.381 13.328,-29.71 29.714,-29.71c16.369,0 29.689,13.329 29.689,29.71c0,16.373 -13.32,29.693 -29.689,29.693c-16.386,0 -29.714,-13.32 -29.714,-29.693Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Team Desk Assignments on facebook"
+        href="https://facebook.com/sharer/sharer.php?u=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2fteam-desk-assignments%2f">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-106.468,0l0,-192.915l66.6,0l12.672,-82.621l-79.272,0l0,-53.617c0,-22.603 11.073,-44.636 46.58,-44.636l36.042,0l0,-70.34c0,0 -32.71,-5.582 -63.982,-5.582c-65.288,0 -107.96,39.569 -107.96,111.204l0,62.971l-72.573,0l0,82.621l72.573,0l0,192.915l-191.104,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Team Desk Assignments on whatsapp"
+        href="https://api.whatsapp.com/send?text=Team%20Desk%20Assignments%20-%20https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2fteam-desk-assignments%2f">
+        <svg version="1.1" viewBox="0 0 512 512" xml:space="preserve">
+            <path
+                d="M449.446,0c34.525,0 62.554,28.03 62.554,62.554l0,386.892c0,34.524 -28.03,62.554 -62.554,62.554l-386.892,0c-34.524,0 -62.554,-28.03 -62.554,-62.554l0,-386.892c0,-34.524 28.029,-62.554 62.554,-62.554l386.892,0Zm-58.673,127.703c-33.842,-33.881 -78.847,-52.548 -126.798,-52.568c-98.799,0 -179.21,80.405 -179.249,179.234c-0.013,31.593 8.241,62.428 23.927,89.612l-25.429,92.884l95.021,-24.925c26.181,14.28 55.659,21.807 85.658,21.816l0.074,0c98.789,0 179.206,-80.413 179.247,-179.243c0.018,-47.895 -18.61,-92.93 -52.451,-126.81Zm-126.797,275.782l-0.06,0c-26.734,-0.01 -52.954,-7.193 -75.828,-20.767l-5.441,-3.229l-56.386,14.792l15.05,-54.977l-3.542,-5.637c-14.913,-23.72 -22.791,-51.136 -22.779,-79.287c0.033,-82.142 66.867,-148.971 149.046,-148.971c39.793,0.014 77.199,15.531 105.329,43.692c28.128,28.16 43.609,65.592 43.594,105.4c-0.034,82.149 -66.866,148.983 -148.983,148.984Zm81.721,-111.581c-4.479,-2.242 -26.499,-13.075 -30.604,-14.571c-4.105,-1.495 -7.091,-2.241 -10.077,2.241c-2.986,4.483 -11.569,14.572 -14.182,17.562c-2.612,2.988 -5.225,3.364 -9.703,1.12c-4.479,-2.241 -18.91,-6.97 -36.017,-22.23c-13.314,-11.876 -22.304,-26.542 -24.916,-31.026c-2.612,-4.484 -0.279,-6.908 1.963,-9.14c2.016,-2.007 4.48,-5.232 6.719,-7.847c2.24,-2.615 2.986,-4.484 4.479,-7.472c1.493,-2.99 0.747,-5.604 -0.374,-7.846c-1.119,-2.241 -10.077,-24.288 -13.809,-33.256c-3.635,-8.733 -7.327,-7.55 -10.077,-7.688c-2.609,-0.13 -5.598,-0.158 -8.583,-0.158c-2.986,0 -7.839,1.121 -11.944,5.604c-4.105,4.484 -15.675,15.32 -15.675,37.364c0,22.046 16.048,43.342 18.287,46.332c2.24,2.99 31.582,48.227 76.511,67.627c10.685,4.615 19.028,7.371 25.533,9.434c10.728,3.41 20.492,2.929 28.209,1.775c8.605,-1.285 26.499,-10.833 30.231,-21.295c3.732,-10.464 3.732,-19.431 2.612,-21.298c-1.119,-1.869 -4.105,-2.99 -8.583,-5.232Z" />
+        </svg>
+    </a>
+    <a target="_blank" rel="noopener noreferrer" aria-label="share Team Desk Assignments on telegram"
+        href="https://telegram.me/share/url?text=Team%20Desk%20Assignments&amp;url=https%3a%2f%2fmatthewcrews.com%2fblog%2f2021%2f11%2fteam-desk-assignments%2f">
+        <svg version="1.1" xml:space="preserve" viewBox="2 2 28 28">
+            <path
+                d="M26.49,29.86H5.5a3.37,3.37,0,0,1-2.47-1,3.35,3.35,0,0,1-1-2.47V5.48A3.36,3.36,0,0,1,3,3,3.37,3.37,0,0,1,5.5,2h21A3.38,3.38,0,0,1,29,3a3.36,3.36,0,0,1,1,2.46V26.37a3.35,3.35,0,0,1-1,2.47A3.38,3.38,0,0,1,26.49,29.86Zm-5.38-6.71a.79.79,0,0,0,.85-.66L24.73,9.24a.55.55,0,0,0-.18-.46.62.62,0,0,0-.41-.17q-.08,0-16.53,6.11a.59.59,0,0,0-.41.59.57.57,0,0,0,.43.52l4,1.24,1.61,4.83a.62.62,0,0,0,.63.43.56.56,0,0,0,.4-.17L16.54,20l4.09,3A.9.9,0,0,0,21.11,23.15ZM13.8,20.71l-1.21-4q8.72-5.55,8.78-5.55c.15,0,.23,0,.23.16a.18.18,0,0,1,0,.06s-2.51,2.3-7.52,6.8Z" />
+        </svg>
+    </a>
+</div>
+
+  </footer>
+</article>
+    </main><footer class="footer">
+    <span>&copy; 2021 <a href="https://matthewcrews.com">Matthew Crews</a></span>
+    <span>&middot;</span>
+    <span>Powered by <a href="https://gohugo.io/" rel="noopener noreferrer" target="_blank">Hugo</a></span>
+    <span>&middot;</span>
+    <span>Theme <a href="https://git.io/hugopapermod" rel="noopener" target="_blank">PaperMod</a></span>
+</footer>
+<a href="#top" aria-label="go to top" title="Go to Top (Alt + G)">
+    <button class="top-link" id="top-link" type="button" accesskey="g">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 6" fill="currentColor">
+            <path d="M12 6H0l6-6z" />
+        </svg>
+    </button>
+</a>
+
+
+
+<script defer src="/assets/js/highlight.min.27cd435cc9ed6abb4b496581b151804f79f366c412620272bb94e2f5f598ebcc.js" integrity="sha256-J81DXMntartLSWWBsVGAT3nzZsQSYgJyu5Ti9fWY68w="
+    onload="hljs.initHighlightingOnLoad();"></script>
+<script>
+    window.onload = function () {
+        if (localStorage.getItem("menu-scroll-position")) {
+            document.getElementById('menu').scrollLeft = localStorage.getItem("menu-scroll-position");
+        }
+    }
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener("click", function (e) {
+            e.preventDefault();
+            var id = this.getAttribute("href").substr(1);
+            if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView({
+                    behavior: "smooth"
+                });
+            } else {
+                document.querySelector(`[id='${decodeURIComponent(id)}']`).scrollIntoView();
+            }
+            if (id === "top") {
+                history.replaceState(null, null, " ");
+            } else {
+                history.replaceState(null, null, `#${id}`);
+            }
+        });
+    });
+    var mybutton = document.getElementById("top-link");
+    window.onscroll = function () {
+        if (document.body.scrollTop > 800 || document.documentElement.scrollTop > 800) {
+            mybutton.style.visibility = "visible";
+            mybutton.style.opacity = "1";
+        } else {
+            mybutton.style.visibility = "hidden";
+            mybutton.style.opacity = "0";
+        }
+    };
+
+    function menu_on_scroll() {
+        localStorage.setItem("menu-scroll-position", document.getElementById('menu').scrollLeft);
+    }
+
+</script>
+<script>
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+        if (document.body.className.includes("dark")) {
+            document.body.classList.remove('dark');
+            localStorage.setItem("pref-theme", 'light');
+        } else {
+            document.body.classList.add('dark');
+            localStorage.setItem("pref-theme", 'dark');
+        }
+    })
+
+</script>
+<script>
+    MathJax = {
+    tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]
+    }
+    };
+</script>
+<script id="MathJax-script" async
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js">
+</script>
+</body>
+
+</html>
