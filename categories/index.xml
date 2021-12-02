@@ -2,8 +2,9 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Categories on Matthew Crews</title>
-    <link>https://matthewcrews.com/categories/</link>
+    <link>/categories/</link>
     <description>Recent content in Categories on Matthew Crews</description>
-    <generator>Hugo -- gohugo.io</generator><atom:link href="https://matthewcrews.com/categories/index.xml" rel="self" type="application/rss+xml" />
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language><atom:link href="/categories/index.xml" rel="self" type="application/rss+xml" />
   </channel>
 </rss>
