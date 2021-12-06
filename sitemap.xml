@@ -2,14 +2,8 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>/services/custom-solution/</loc>
-    <lastmod>2018-11-18T12:33:46+10:00</lastmod>
-  </url><url>
     <loc>/services/project-advisor/</loc>
     <lastmod>2018-11-28T15:14:39+10:00</lastmod>
-  </url><url>
-    <loc>/services/blueprint/</loc>
-    <lastmod>2018-11-28T15:15:26+10:00</lastmod>
   </url><url>
     <loc>/services/strategy-call/</loc>
     <lastmod>2018-11-28T15:15:34+10:00</lastmod>
